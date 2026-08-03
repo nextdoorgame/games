@@ -51,6 +51,8 @@ Koyeb 會自動提供 `PORT`，`server.mjs` 會讀取並使用它。部署完成
 
 在 Render 建立 Blueprint 並連接 `tingchuchi/gomoku-online` 後會自動部署。取得 `https://...onrender.com` 網址後，將它填入 `config.js`，GitHub Pages 即可使用線上大廳。
 
+目前部署網址：[`https://gomoku-online-x78w.onrender.com`](https://gomoku-online-x78w.onrender.com)
+
 ## 部署到 GitHub Pages
 
 專案已包含 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)。推送到 `main` 分支後，GitHub Actions 會自動整理靜態檔案並部署，因此也支援 `https://帳號.github.io/倉庫名稱/` 這類子路徑網址。
