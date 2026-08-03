@@ -107,6 +107,7 @@ function publicGame(game) {
     rematchRequests: game.rematchRequests,
     matchStatus: game.matchStatus,
     rematchDeclinedBy: game.rematchDeclinedBy,
+    revision: game.revision,
     updatedAt: game.updatedAt
   };
 }
@@ -130,6 +131,7 @@ function resetRound(game, restartSeries) {
   game.winLine = [];
   game.rematchRequests = [];
   game.rematchDeclinedBy = null;
+  game.revision += 1;
   game.updatedAt = Date.now();
 }
 
@@ -155,6 +157,7 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/invite") {
     const body = await readJson(req);
     const bestOf = Number(body.bestOf) === 5 ? 5 : 3;
+    const inviterColor = body.inviterColor === "white" ? WHITE : BLACK;
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
@@ -162,7 +165,7 @@ async function handleApi(req, res, url) {
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
     const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, inviterColor, status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
@@ -179,7 +182,7 @@ async function handleApi(req, res, url) {
     const from = players.get(invite.fromId);
     const to = players.get(invite.toId);
     if (!from || !to) return sendJson(res, 404, { error: "其中一位玩家已離線" });
-    const inviterIsBlack = Math.random() >= .5;
+    const inviterIsBlack = invite.inviterColor !== WHITE;
     const game = {
       id: randomUUID(),
       board: Array(BOARD_SIZE * BOARD_SIZE).fill(0),
@@ -200,6 +203,7 @@ async function handleApi(req, res, url) {
       rematchRequests: [],
       matchStatus: "active",
       rematchDeclinedBy: null,
+      revision: 0,
       updatedAt: Date.now()
     };
     games.set(game.id, game);
@@ -241,6 +245,7 @@ async function handleApi(req, res, url) {
     } else {
       game.turn = player.color === BLACK ? WHITE : BLACK;
     }
+    game.revision += 1;
     game.updatedAt = Date.now();
     return sendJson(res, 200, publicGame(game));
   }
@@ -257,12 +262,16 @@ async function handleApi(req, res, url) {
     if (!body.accept) {
       game.matchStatus = "closed";
       game.rematchDeclinedBy = player.id;
+      game.revision += 1;
       game.updatedAt = Date.now();
       return sendJson(res, 200, publicGame(game));
     }
     if (!game.rematchRequests.includes(player.id)) game.rematchRequests.push(player.id);
     if (game.rematchRequests.length === game.players.length) resetRound(game, Boolean(game.seriesWinnerId));
-    else game.updatedAt = Date.now();
+    else {
+      game.revision += 1;
+      game.updatedAt = Date.now();
+    }
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -278,6 +287,7 @@ async function handleApi(req, res, url) {
       game.winner = player.color === BLACK ? WHITE : BLACK;
       game.matchStatus = "closed";
       game.rematchDeclinedBy = player.id;
+      game.revision += 1;
       game.updatedAt = Date.now();
     }
     return sendJson(res, 200, publicGame(game));

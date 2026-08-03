@@ -1,3 +1,5 @@
+import { shouldApplyOnlineSnapshot } from "./game-sync.js";
+
 const SIZE = 15;
 const BLACK = 1;
 const WHITE = 2;
@@ -73,6 +75,7 @@ let pendingInviteButton = null;
 let pendingInvites = new Set();
 let toastTimer = null;
 let isFetchingLobby = false;
+let isFetchingOnlineGame = false;
 let recordedGameKey = "";
 let series = null;
 let roundDialogKey = "";
@@ -467,7 +470,9 @@ async function fetchLobby() {
     } else if (data.incomingInvites.length && !currentInvite && !els.inviteDialog.open) {
       currentInvite = data.incomingInvites[0];
       els.inviterName.textContent = currentInvite.fromName;
-      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・每局交換黑白`;
+      const inviterIsBlack = currentInvite.inviterColor !== WHITE;
+      const firstRoundLabel = inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手";
+      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每局交換黑白`;
       els.inviteDialog.showModal();
     }
   } catch (error) {
@@ -509,15 +514,15 @@ function prepareOnlineInvite(player, button) {
   els.onlineSeriesDialog.showModal();
 }
 
-async function sendInvite(player, button, bestOf) {
+async function sendInvite(player, button, bestOf, inviterColor) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf, inviterColor }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
-    showToast(`已邀請 ${player.name} 進行${bestOf === 5 ? "五戰三勝" : "三戰兩勝"}`);
+    showToast(`已邀請 ${player.name}；第一局你${inviterColor === "white" ? "後手" : "先手"}`);
   } catch (error) {
     button.disabled = false;
     button.textContent = "邀請對戰";
@@ -556,16 +561,21 @@ async function startOnlineGame(gameId) {
 }
 
 async function fetchOnlineGame(gameId) {
+  if (isFetchingOnlineGame) return;
+  isFetchingOnlineGame = true;
   try {
     const data = await api(`/api/game/${encodeURIComponent(gameId)}?playerId=${encodeURIComponent(playerId)}`);
     applyOnlineGameData(data);
   } catch (error) {
     window.clearInterval(onlineTimer);
     showToast(error.message);
+  } finally {
+    isFetchingOnlineGame = false;
   }
 }
 
 function applyOnlineGameData(data) {
+  if (!shouldApplyOnlineSnapshot(gameMode === "online" ? game : null, data)) return false;
   const me = data.players.find((player) => player.id === playerId);
   const opponent = data.players.find((player) => player.id !== playerId);
   game = {
@@ -581,7 +591,7 @@ function applyOnlineGameData(data) {
   if (game.status === "playing") {
     roundDialogKey = "";
     if (els.roundEndDialog.open) els.roundEndDialog.close();
-    return;
+    return true;
   }
 
   saveCurrentRecord();
@@ -592,10 +602,11 @@ function applyOnlineGameData(data) {
       showToast(game.rematchDeclinedBy === playerId ? "系列賽已結束" : "對手已結束系列賽");
       window.clearInterval(onlineTimer);
     }
-    return;
+    return true;
   }
   if (!game.rematchRequests?.includes(playerId)) showRoundEndDialog();
   else els.gameStatus.textContent = "已同意繼續，等待對手確認…";
+  return true;
 }
 
 async function makeOnlineMove(index) {
@@ -760,7 +771,8 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   if (!pendingInvitePlayer || !pendingInviteButton) return;
   const data = new FormData(els.onlineSeriesDialog.querySelector("form"));
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
-  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf);
+  const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
+  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf, inviterColor);
 });
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {
