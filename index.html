@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f7f6f1" />
+    <title>五子棋 · Gomoku</title>
+    <link rel="stylesheet" href="./src/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <a class="brand" href="#" data-view="home" aria-label="回首頁">
+          <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span>五子棋<small>GOMOKU</small></span>
+        </a>
+
+        <nav class="main-nav" aria-label="主要選單">
+          <button class="nav-item active" data-view="home" type="button">
+            <span class="nav-icon">⌂</span><span>首頁</span>
+          </button>
+          <button class="nav-item" data-view="lobby" type="button">
+            <span class="nav-icon">♙</span><span>遊戲大廳</span><b id="lobbyCount">0</b>
+          </button>
+          <button class="nav-item" data-view="records" type="button">
+            <span class="nav-icon">▤</span><span>對戰紀錄</span>
+          </button>
+        </nav>
+
+        <div class="sidebar-note">
+          <span class="status-dot"></span>
+          <div><strong id="serverStatusTitle">伺服器運作中</strong><small id="serverStatusText">即時連線正常</small></div>
+        </div>
+        <p class="copyright">© 2026 GOMOKU</p>
+      </aside>
+
+      <main class="main-content">
+        <header class="topbar">
+          <div class="mobile-brand">五子棋</div>
+          <div class="profile">
+            <div class="avatar" id="profileAvatar">棋</div>
+            <div><strong id="profileName">棋手</strong><span><i></i> 線上</span></div>
+            <button id="editName" class="icon-button" type="button" aria-label="修改名稱">✎</button>
+          </div>
+        </header>
+
+        <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+        <section id="homeView" class="view active">
+          <div class="welcome">
+            <div>
+              <span class="eyebrow">WELCOME BACK</span>
+              <h1>準備好下一盤了嗎？</h1>
+              <p>在線對弈或挑戰 AI，用五枚棋子連成你的勝利之路。</p>
+            </div>
+            <div class="welcome-stones" aria-hidden="true"><i></i><i></i><i></i></div>
+          </div>
+
+          <div class="section-heading">
+            <div><span class="eyebrow">QUICK START</span><h2>選擇遊戲模式</h2></div>
+          </div>
+
+          <div class="mode-grid">
+            <article class="mode-card online-card">
+              <div class="mode-visual online-visual" aria-hidden="true">
+                <span class="piece black"></span><span class="versus">VS</span><span class="piece white"></span>
+              </div>
+              <div class="mode-copy">
+                <span class="mode-label">ONLINE MATCH</span>
+                <h3>線上對戰</h3>
+                <p id="onlineModeDescription">進入遊戲大廳，邀請在線棋手來一場一對一即時對局。</p>
+                <button class="primary-button" data-view="lobby" type="button">進入遊戲大廳 <span>→</span></button>
+              </div>
+            </article>
+
+            <article class="mode-card solo-card">
+              <div class="mode-visual ai-visual" aria-hidden="true">
+                <div class="bot-face"><span></span><span></span></div>
+                <i class="spark s1">✦</i><i class="spark s2">✦</i>
+              </div>
+              <div class="mode-copy">
+                <span class="mode-label">PLAY WITH AI</span>
+                <h3>單人遊戲</h3>
+                <p>自由選擇 AI 難度，還能回到上一步，輕鬆磨練棋力。</p>
+                <button id="openSingleSetup" class="secondary-button" type="button">選擇 AI 難度 <span>→</span></button>
+              </div>
+            </article>
+          </div>
+
+          <section class="how-to">
+            <div class="section-heading"><div><span class="eyebrow">HOW TO PLAY</span><h2>簡單規則，無限變化</h2></div></div>
+            <div class="rule-grid">
+              <div><b>01</b><span>黑棋先手</span><p>雙方輪流在棋盤交叉點落下一子。</p></div>
+              <div><b>02</b><span>連成五子</span><p>橫、直或斜線先連成五枚棋子即獲勝。</p></div>
+              <div><b>03</b><span>攻守取勝</span><p>觀察對手棋路，同時創造自己的連線。</p></div>
+            </div>
+          </section>
+        </section>
+
+        <section id="lobbyView" class="view">
+          <div class="page-heading">
+            <div><span class="eyebrow">ONLINE LOBBY</span><h1>遊戲大廳</h1><p>選擇一位在線棋手，送出一對一對戰邀請。</p></div>
+            <div class="online-badge"><i></i><strong id="onlineCount">1</strong> 人在線</div>
+          </div>
+          <div class="lobby-layout">
+            <section class="panel player-panel">
+              <div class="panel-heading"><div><h2>在線棋手</h2><p>名單會自動更新</p></div><button id="refreshLobby" class="icon-button" type="button" aria-label="更新名單">↻</button></div>
+              <div id="playerList" class="player-list"></div>
+            </section>
+            <aside class="panel lobby-side">
+              <span class="eyebrow">YOUR STATUS</span>
+              <div class="my-player-card"><div class="avatar large" id="lobbyAvatar">棋</div><div><strong id="lobbyName">棋手</strong><span><i></i> 等待對戰中</span></div></div>
+              <div class="lobby-tip"><span>!</span><p><strong>邀請提示</strong>對方接受後，系統會自動進入棋局。</p></div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="gameView" class="view game-view">
+          <div class="game-heading">
+            <button id="leaveGame" class="text-button" type="button">← 返回大廳</button>
+            <div><span id="gameModeLabel" class="eyebrow">SINGLE MATCH</span><h1 id="gameTitle">與 AI 對弈</h1></div>
+            <div id="turnPill" class="turn-pill"><i></i><span>輪到你了</span></div>
+          </div>
+          <div class="game-layout">
+            <section class="board-card">
+              <div id="board" class="board" role="grid" aria-label="十五路五子棋棋盤"></div>
+            </section>
+            <aside class="game-panel">
+              <div class="players-card">
+                <div id="opponentRow" class="match-player"><div class="stone-icon white-stone"></div><div><small>對手</small><strong id="opponentName">思考者 AI</strong></div><span id="opponentTag">普通</span></div>
+                <div class="match-divider"><span>VS</span></div>
+                <div id="meRow" class="match-player active"><div class="stone-icon black-stone"></div><div><small>你</small><strong id="gamePlayerName">棋手</strong></div><span>你</span></div>
+              </div>
+              <div class="move-info"><span>目前手數</span><strong id="moveCount">0</strong></div>
+              <p id="gameStatus" class="game-status">黑棋先行，請選擇交叉點落子。</p>
+              <div class="game-actions">
+                <button id="undoMove" type="button">↶ 回到上一步</button>
+                <button id="restartGame" type="button">↻ 重新開始</button>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="recordsView" class="view">
+          <div class="page-heading"><div><span class="eyebrow">MATCH HISTORY</span><h1>對戰紀錄</h1><p>儲存在這個瀏覽器中的最近對局。</p></div></div>
+          <div id="recordList" class="record-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="singleDialog" class="modal">
+      <form method="dialog">
+        <button class="modal-close" value="cancel" aria-label="關閉">×</button>
+        <span class="eyebrow">SINGLE PLAYER</span><h2>設定你的挑戰</h2><p>選擇 AI 強度與執棋顏色，隨時都可以悔棋。</p>
+        <fieldset><legend>AI 難度</legend><div class="choice-grid difficulty-grid">
+          <label><input type="radio" name="difficulty" value="easy"><span><b>輕鬆</b><small>初次練習</small></span></label>
+          <label><input type="radio" name="difficulty" value="medium" checked><span><b>普通</b><small>有攻有守</small></span></label>
+          <label><input type="radio" name="difficulty" value="hard"><span><b>困難</b><small>全力應戰</small></span></label>
+        </div></fieldset>
+        <fieldset><legend>執棋顏色</legend><div class="choice-grid color-grid">
+          <label><input type="radio" name="color" value="black" checked><span><i class="mini-stone black-stone"></i>黑棋先手</span></label>
+          <label><input type="radio" name="color" value="white"><span><i class="mini-stone white-stone"></i>白棋後手</span></label>
+        </div></fieldset>
+        <button id="startSingle" class="primary-button full" value="default" type="button">開始對局 →</button>
+      </form>
+    </dialog>
+
+    <dialog id="inviteDialog" class="modal invite-modal">
+      <form method="dialog">
+        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一五子棋對戰。</p>
+        <div class="invite-actions"><button id="declineInvite" value="cancel" type="button">婉拒</button><button id="acceptInvite" class="primary-button" value="default" type="button">接受對戰</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="nameDialog" class="modal name-modal">
+      <form method="dialog">
+        <span class="eyebrow">PLAYER PROFILE</span><h2>你的棋手名稱</h2><p>其他玩家會在遊戲大廳看到這個名稱。</p>
+        <label class="text-field"><span>名稱</span><input id="nameInput" maxlength="16" autocomplete="nickname" placeholder="輸入棋手名稱"></label>
+        <button id="saveName" class="primary-button full" value="default" type="button">儲存名稱</button>
+      </form>
+    </dialog>
+
+    <script src="./config.js"></script>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
