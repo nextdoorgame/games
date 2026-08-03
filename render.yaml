@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: gomoku-online
+    runtime: node
+    region: singapore
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: NODE_ENV
+        value: production

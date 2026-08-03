@@ -37,6 +37,20 @@ Koyeb 可以直接從這個 GitHub repository 使用 Node.js Buildpack 部署：
 
 Koyeb 會自動提供 `PORT`，`server.mjs` 會讀取並使用它。部署完成後，將 Koyeb 的 HTTPS 網址填入 `config.js`，再推送到 GitHub Pages。
 
+> Koyeb 在 2026 年加入 Mistral 後，新註冊帳戶需要付費方案；以上設定保留給既有 Koyeb 帳戶使用。
+
+## 部署 Render 免費後端
+
+專案根目錄的 [`render.yaml`](render.yaml) 已定義免費 Web Service：
+
+- Region：Singapore
+- Build command：`npm ci --omit=dev`
+- Start command：`npm start`
+- Health check：`/`
+- Instance：Free
+
+在 Render 建立 Blueprint 並連接 `tingchuchi/gomoku-online` 後會自動部署。取得 `https://...onrender.com` 網址後，將它填入 `config.js`，GitHub Pages 即可使用線上大廳。
+
 ## 部署到 GitHub Pages
 
 專案已包含 [`.github/workflows/pages.yml`](.github/workflows/pages.yml)。推送到 `main` 分支後，GitHub Actions 會自動整理靜態檔案並部署，因此也支援 `https://帳號.github.io/倉庫名稱/` 這類子路徑網址。
