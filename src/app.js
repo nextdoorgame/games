@@ -68,6 +68,8 @@ let activeView = "home";
 let gameMode = null;
 let game = null;
 let aiTimer = null;
+let aiWorker = null;
+let aiRequest = 0;
 let lobbyTimer = null;
 let onlineTimer = null;
 let currentInvite = null;
@@ -108,6 +110,14 @@ function showToast(message) {
   toastTimer = window.setTimeout(() => els.toast.classList.remove("show"), 2800);
 }
 
+function cancelAiMove() {
+  window.clearTimeout(aiTimer);
+  aiTimer = null;
+  aiRequest += 1;
+  if (aiWorker) aiWorker.terminate();
+  aiWorker = null;
+}
+
 function showView(name) {
   activeView = name;
   els.views.forEach((view) => view.classList.toggle("active", view.id === `${name}View`));
@@ -133,7 +143,7 @@ function renderStaticLobby() {
 }
 
 function resetGameState(mode, options = {}) {
-  window.clearTimeout(aiTimer);
+  cancelAiMove();
   recordedGameKey = "";
   gameMode = mode;
   game = {
@@ -290,14 +300,45 @@ function handleBoardClick(event) {
 }
 
 function scheduleAiMove() {
-  window.clearTimeout(aiTimer);
+  cancelAiMove();
+  const requestId = aiRequest;
   aiTimer = window.setTimeout(() => {
     if (gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor) return;
-    const index = chooseAiMove(game.board, game.aiColor, game.playerColor, game.difficulty);
-    placeLocalStone(index, game.aiColor);
-    renderBoard();
-    if (game.status !== "playing") settleSingleRound();
-  }, game.difficulty === "hard" ? 680 : game.difficulty === "medium" ? 520 : 400);
+    const expectedMoveCount = game.moves.length;
+    const difficulty = game.difficulty;
+    const depthLabels = { easy: 5, medium: 10, hard: 20 };
+    els.gameStatus.textContent = `AI 正在進行${difficulty === "hard" ? "最高 " : ""}${depthLabels[difficulty]} 層推演…`;
+
+    const finishMove = (index) => {
+      if (requestId !== aiRequest || gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor || game.moves.length !== expectedMoveCount) return;
+      if (!Number.isInteger(index) || index < 0 || game.board[index] !== EMPTY) return;
+      placeLocalStone(index, game.aiColor);
+      renderBoard();
+      if (game.status !== "playing") settleSingleRound();
+    };
+
+    const worker = new Worker(new URL("./ai-worker.js", import.meta.url), { type: "module" });
+    aiWorker = worker;
+    worker.addEventListener("message", (event) => {
+      worker.terminate();
+      if (aiWorker === worker) aiWorker = null;
+      finishMove(event.data.index);
+    }, { once: true });
+    worker.addEventListener("error", (event) => {
+      event.preventDefault();
+      worker.terminate();
+      if (aiWorker === worker) aiWorker = null;
+      if (requestId !== aiRequest || !game) return;
+      const fallback = chooseAiMove([...game.board], game.aiColor, game.playerColor, difficulty, {
+        tacticalDepth: 5,
+        positionalDepth: 3,
+        timeMs: 350,
+        limits: [8, 5, 3]
+      });
+      finishMove(fallback);
+    }, { once: true });
+    worker.postMessage({ board: [...game.board], aiColor: game.aiColor, humanColor: game.playerColor, difficulty });
+  }, 260);
 }
 
 function startSingleGame() {
@@ -307,10 +348,10 @@ function startSingleGame() {
   const color = data.get("color") === "white" ? WHITE : BLACK;
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
   series = { mode: "single", bestOf, target: Math.ceil(bestOf / 2), round: 1, myWins: 0, opponentWins: 0, draws: 0, initialPlayerColor: color };
-  const labels = { easy: "輕鬆", medium: "普通", hard: "困難" };
+  const labels = { easy: "初級", medium: "進階", hard: "困難" };
   els.gameModeLabel.textContent = "SINGLE MATCH";
   els.gameTitle.textContent = `挑戰 ${labels[difficulty]} AI`;
-  els.opponentName.textContent = difficulty === "easy" ? "戰術家 AI" : difficulty === "hard" ? "棋聖 AI" : "推演者 AI";
+  els.opponentName.textContent = difficulty === "easy" ? "戰術家 AI" : difficulty === "hard" ? "棋聖 AI" : "深思者 AI";
   els.opponentTag.textContent = labels[difficulty];
   els.singleDialog.close();
   startSingleRound(difficulty);
@@ -338,7 +379,7 @@ function settleSingleRound() {
 
 function undoSingleMove() {
   if (gameMode !== "single" || !game.moves.length) return;
-  window.clearTimeout(aiTimer);
+  cancelAiMove();
   const minimum = game.playerColor === WHITE ? 1 : 0;
   if (game.moves.length <= minimum) return;
 
@@ -605,7 +646,7 @@ async function endCurrentSeries() {
       await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: false }) });
     } catch { /* Returning to the lobby remains safe if the match already closed. */ }
   }
-  window.clearTimeout(aiTimer);
+  cancelAiMove();
   window.clearInterval(onlineTimer);
   const destination = gameMode === "online" ? "lobby" : "home";
   gameMode = null;
@@ -615,7 +656,7 @@ async function endCurrentSeries() {
 }
 
 async function leaveCurrentGame() {
-  window.clearTimeout(aiTimer);
+  cancelAiMove();
   window.clearInterval(onlineTimer);
   if (gameMode === "online" && game?.status === "playing") {
     try {

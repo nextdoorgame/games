@@ -1,7 +1,30 @@
 const SIZE = 15;
 const EMPTY = 0;
-const WIN_SCORE = 10_000_000;
+const WIN_SCORE = 100_000_000;
 const DIRECTIONS = [[1, 0], [0, 1], [1, 1], [1, -1]];
+
+const LEVELS = {
+  easy: {
+    tacticalDepth: 5,
+    positionalDepth: 5,
+    timeMs: 900,
+    limits: [10, 8, 6, 4, 3]
+  },
+  medium: {
+    tacticalDepth: 10,
+    positionalDepth: 7,
+    timeMs: 1500,
+    limits: [12, 9, 7, 5, 4, 3, 2]
+  },
+  hard: {
+    tacticalDepth: 20,
+    positionalDepth: 9,
+    timeMs: 2400,
+    limits: [14, 10, 8, 6, 4, 3, 3, 2, 2]
+  }
+};
+
+class SearchTimeout extends Error {}
 
 function isWinningMove(board, index, color) {
   const row = Math.floor(index / SIZE);
@@ -59,11 +82,11 @@ function directionalPotential(board, index, color) {
         }
       }
     }
-    const weights = [0, 2, 12, 80, 700, 100000];
-    total += weights[Math.min(count, 5)] * (open === 2 ? 1.7 : open === 1 ? 1 : .2);
+    const weights = [0, 3, 20, 180, 3500, WIN_SCORE];
+    total += weights[Math.min(count, 5)] * (open === 2 ? 2.1 : open === 1 ? 1 : .15);
   }
   const centerDistance = Math.abs(row - 7) + Math.abs(col - 7);
-  return total + Math.max(0, 14 - centerDistance) * .35;
+  return total + Math.max(0, 14 - centerDistance) * .45;
 }
 
 function immediateWinningMoves(board, color, candidates = nearbyCandidates(board)) {
@@ -82,44 +105,8 @@ function centerTieBreak(a, b) {
   return distance(a.index) - distance(b.index) || a.index - b.index;
 }
 
-function legacyHardMove(board, aiColor, humanColor) {
-  const candidates = nearbyCandidates(board);
-  const scored = candidates.map((index) => {
-    board[index] = aiColor;
-    const wins = isWinningMove(board, index, aiColor);
-    board[index] = humanColor;
-    const blocksWin = isWinningMove(board, index, humanColor);
-    board[index] = EMPTY;
-    const score = wins
-      ? 1_000_000
-      : blocksWin
-        ? 850_000
-        : directionalPotential(board, index, aiColor) * 1.15 + directionalPotential(board, index, humanColor);
-    return { index, score };
-  }).sort((a, b) => b.score - a.score || centerTieBreak(a, b));
-
-  const top = scored.slice(0, Math.min(14, scored.length));
-  for (const move of top) {
-    if (move.score >= 850_000) continue;
-    board[move.index] = aiColor;
-    const replies = nearbyCandidates(board);
-    let danger = 0;
-    for (const reply of replies) {
-      board[reply] = humanColor;
-      const immediate = isWinningMove(board, reply, humanColor);
-      board[reply] = EMPTY;
-      danger = Math.max(danger, immediate ? 500_000 : directionalPotential(board, reply, humanColor));
-    }
-    board[move.index] = EMPTY;
-    move.score -= danger * .72;
-  }
-  top.sort((a, b) => b.score - a.score || centerTieBreak(a, b));
-  return top[0]?.index ?? candidates[0];
-}
-
-function orderedMoves(board, color, opponentColor, limit) {
-  const candidates = nearbyCandidates(board);
-  const moves = candidates.map((index) => {
+function orderedMoves(board, color, opponentColor, limit = Infinity, preferredMove = -1) {
+  const moves = nearbyCandidates(board).map((index) => {
     board[index] = color;
     const wins = isWinningMove(board, index, color);
     board[index] = opponentColor;
@@ -127,111 +114,226 @@ function orderedMoves(board, color, opponentColor, limit) {
     board[index] = EMPTY;
     const attack = directionalPotential(board, index, color);
     const defense = directionalPotential(board, index, opponentColor);
-    const score = wins ? WIN_SCORE : blocksWin ? WIN_SCORE * .86 : attack * 1.28 + defense * 1.08;
-    return { index, score, wins };
+    const preferred = index === preferredMove ? WIN_SCORE * 2 : 0;
+    const score = preferred + (wins ? WIN_SCORE : blocksWin ? WIN_SCORE * .9 : attack * 1.35 + defense * 1.16);
+    return { index, score, wins, blocksWin };
   });
   moves.sort((a, b) => b.score - a.score || centerTieBreak(a, b));
   return moves.slice(0, Math.min(limit, moves.length));
+}
+
+function checkDeadline(context) {
+  context.nodes += 1;
+  if ((context.nodes & 127) === 0 && performance.now() >= context.deadline) throw new SearchTimeout();
+}
+
+// Searches only continuous forcing sequences. This makes a 20-ply tactical scan
+// practical in a browser while still exploring every required defensive reply.
+function forcingWin(board, attacker, defender, depth, context) {
+  checkDeadline(context);
+  if (depth <= 0) return false;
+
+  const defenderWins = immediateWinningMoves(board, defender);
+  if (defenderWins.length) return false;
+
+  const candidates = orderedMoves(board, attacker, defender, depth >= 12 ? 12 : 16);
+  for (const move of candidates) {
+    board[move.index] = attacker;
+    try {
+      if (move.wins) return true;
+      const threats = immediateWinningMoves(board, attacker);
+      if (threats.length >= 2) return true;
+      if (threats.length !== 1 || depth < 2) continue;
+
+      const forcedReply = threats[0];
+      board[forcedReply] = defender;
+      try {
+        if (forcingWin(board, attacker, defender, depth - 2, context)) return true;
+      } finally {
+        board[forcedReply] = EMPTY;
+      }
+    } finally {
+      board[move.index] = EMPTY;
+    }
+  }
+  return false;
+}
+
+function findForcingMove(board, aiColor, humanColor, depth, context) {
+  const candidates = orderedMoves(board, aiColor, humanColor, 18);
+  for (const move of candidates) {
+    checkDeadline(context);
+    board[move.index] = aiColor;
+    try {
+      if (move.wins) return move.index;
+      const threats = immediateWinningMoves(board, aiColor);
+      if (threats.length >= 2) return move.index;
+      if (threats.length !== 1 || depth < 2) continue;
+
+      const forcedReply = threats[0];
+      board[forcedReply] = humanColor;
+      try {
+        if (forcingWin(board, aiColor, humanColor, depth - 2, context)) return move.index;
+      } finally {
+        board[forcedReply] = EMPTY;
+      }
+    } finally {
+      board[move.index] = EMPTY;
+    }
+  }
+  return -1;
 }
 
 function tacticalProfile(board, color, opponentColor, nextTurn) {
   const candidates = nearbyCandidates(board);
   const wins = immediateWinningMoves(board, color, candidates).length;
   if (wins) {
-    const tempo = nextTurn === color ? 1 : .62;
-    return (4_500_000 + Math.min(wins, 3) * 650_000) * tempo;
+    const tempo = nextTurn === color ? 1 : .66;
+    return (WIN_SCORE * .52 + Math.min(wins, 3) * WIN_SCORE * .08) * tempo;
   }
-  const ranked = orderedMoves(board, color, opponentColor, 4);
-  const weights = [1, .42, .2, .1];
+  const ranked = orderedMoves(board, color, opponentColor, 5);
+  const weights = [1, .46, .24, .13, .07];
   return ranked.reduce((sum, move, index) => sum + move.score * weights[index], 0);
 }
 
 function evaluatePosition(board, aiColor, humanColor, nextTurn) {
   const attack = tacticalProfile(board, aiColor, humanColor, nextTurn);
   const defense = tacticalProfile(board, humanColor, aiColor, nextTurn);
-  return attack - defense * 1.06;
+  return attack - defense * 1.1;
 }
 
-function minimax(board, turnColor, aiColor, humanColor, depth, alpha, beta, limits, ply) {
+function searchKey(board, turnColor, depth) {
+  return `${turnColor}:${depth}:${board.join("")}`;
+}
+
+function minimax(board, turnColor, aiColor, humanColor, depth, alpha, beta, settings, ply, context) {
+  checkDeadline(context);
   if (depth <= 0) return evaluatePosition(board, aiColor, humanColor, turnColor);
+
+  const key = searchKey(board, turnColor, depth);
+  if (context.cache.has(key)) return context.cache.get(key);
+
   const opponentColor = turnColor === aiColor ? humanColor : aiColor;
-  const limit = limits[Math.min(ply, limits.length - 1)];
+  const limit = settings.limits[Math.min(ply, settings.limits.length - 1)];
   const moves = orderedMoves(board, turnColor, opponentColor, limit);
   if (!moves.length) return evaluatePosition(board, aiColor, humanColor, turnColor);
 
-  if (turnColor === aiColor) {
-    let best = -Infinity;
-    for (const move of moves) {
-      board[move.index] = turnColor;
-      const score = move.wins
-        ? WIN_SCORE - ply
-        : minimax(board, opponentColor, aiColor, humanColor, depth - 1, alpha, beta, limits, ply + 1);
-      board[move.index] = EMPTY;
-      best = Math.max(best, score);
-      alpha = Math.max(alpha, best);
-      if (beta <= alpha) break;
-    }
-    return best;
-  }
-
-  let best = Infinity;
+  const maximizing = turnColor === aiColor;
+  let best = maximizing ? -Infinity : Infinity;
+  let cutoff = false;
   for (const move of moves) {
     board[move.index] = turnColor;
-    const score = move.wins
-      ? -WIN_SCORE + ply
-      : minimax(board, opponentColor, aiColor, humanColor, depth - 1, alpha, beta, limits, ply + 1);
-    board[move.index] = EMPTY;
-    best = Math.min(best, score);
-    beta = Math.min(beta, best);
-    if (beta <= alpha) break;
+    let score;
+    try {
+      score = move.wins
+        ? (maximizing ? WIN_SCORE - ply : -WIN_SCORE + ply)
+        : minimax(board, opponentColor, aiColor, humanColor, depth - 1, alpha, beta, settings, ply + 1, context);
+    } finally {
+      board[move.index] = EMPTY;
+    }
+
+    if (maximizing) {
+      best = Math.max(best, score);
+      alpha = Math.max(alpha, best);
+    } else {
+      best = Math.min(best, score);
+      beta = Math.min(beta, best);
+    }
+    if (beta <= alpha) {
+      cutoff = true;
+      break;
+    }
   }
+  if (!cutoff) context.cache.set(key, best);
   return best;
 }
 
-function searchedMove(board, aiColor, humanColor, difficulty) {
-  const candidates = nearbyCandidates(board);
-  const wins = immediateWinningMoves(board, aiColor, candidates);
-  if (wins.length) return orderedMoves(board, aiColor, humanColor, candidates.length).find((move) => wins.includes(move.index))?.index ?? wins[0];
-
-  const blocks = immediateWinningMoves(board, humanColor, candidates);
-  if (blocks.length === 1) return blocks[0];
-
-  // Two distinct winning points cannot both be stopped on the next turn.
-  // Detect these forks explicitly so the shallower medium search never misses one.
-  if (!blocks.length) {
-    const forks = orderedMoves(board, aiColor, humanColor, candidates.length).filter((move) => {
-      board[move.index] = aiColor;
-      const followUpWins = immediateWinningMoves(board, aiColor).length;
-      board[move.index] = EMPTY;
-      return followUpWins >= 2;
-    });
-    if (forks.length) return forks[0].index;
-  }
-
-  const settings = difficulty === "hard"
-    ? { depth: 3, limits: [14, 10, 8, 6] }
-    : { depth: 2, limits: [12, 10, 7] };
-  const rootMoves = orderedMoves(board, aiColor, humanColor, settings.limits[0]);
-  let bestMove = rootMoves[0]?.index ?? candidates[0];
+function searchRoot(board, aiColor, humanColor, depth, settings, context, preferredMove) {
+  const moves = orderedMoves(board, aiColor, humanColor, settings.limits[0], preferredMove);
+  let bestMove = moves[0]?.index ?? -1;
   let bestScore = -Infinity;
-
-  for (const move of rootMoves) {
+  for (const move of moves) {
+    checkDeadline(context);
     board[move.index] = aiColor;
-    const score = move.wins
-      ? WIN_SCORE
-      : minimax(board, humanColor, aiColor, humanColor, settings.depth - 1, -Infinity, Infinity, settings.limits, 1);
-    board[move.index] = EMPTY;
+    let score;
+    try {
+      score = move.wins
+        ? WIN_SCORE
+        : minimax(board, humanColor, aiColor, humanColor, depth - 1, -Infinity, Infinity, settings, 1, context);
+    } finally {
+      board[move.index] = EMPTY;
+    }
     if (score > bestScore) {
       bestScore = score;
       bestMove = move.index;
     }
   }
-  return bestMove;
+  return { index: bestMove, score: bestScore };
 }
 
-export function chooseAiMove(board, aiColor, humanColor, difficulty = "medium") {
+export function getAiLevel(difficulty = "medium") {
+  return { ...(LEVELS[difficulty] || LEVELS.medium) };
+}
+
+export function analyzeAiMove(board, aiColor, humanColor, difficulty = "medium", overrides = {}) {
   if (!Array.isArray(board) || board.length !== SIZE * SIZE) throw new Error("Invalid Gomoku board");
-  if (!board.includes(EMPTY)) return -1;
-  if (difficulty === "easy") return legacyHardMove(board, aiColor, humanColor);
-  return searchedMove(board, aiColor, humanColor, difficulty === "hard" ? "hard" : "medium");
+  if (!board.includes(EMPTY)) return { index: -1, depth: 0, tacticalDepth: 0, nodes: 0, elapsedMs: 0 };
+
+  const settings = { ...(LEVELS[difficulty] || LEVELS.medium), ...overrides };
+  const started = performance.now();
+  const context = {
+    deadline: started + settings.timeMs,
+    nodes: 0,
+    cache: new Map()
+  };
+  const candidates = nearbyCandidates(board);
+  if (candidates.length === 1) {
+    return { index: candidates[0], depth: settings.positionalDepth, tacticalDepth: settings.tacticalDepth, nodes: 1, elapsedMs: 0 };
+  }
+
+  const wins = immediateWinningMoves(board, aiColor, candidates);
+  if (wins.length) return { index: wins[0], depth: 1, tacticalDepth: settings.tacticalDepth, nodes: 1, elapsedMs: performance.now() - started };
+  const blocks = immediateWinningMoves(board, humanColor, candidates);
+  if (blocks.length === 1) return { index: blocks[0], depth: 1, tacticalDepth: settings.tacticalDepth, nodes: 1, elapsedMs: performance.now() - started };
+
+  let bestMove = orderedMoves(board, aiColor, humanColor, 1)[0]?.index ?? candidates[0];
+  let completedDepth = 0;
+  let timedOut = false;
+
+  try {
+    const forcingMove = findForcingMove(board, aiColor, humanColor, settings.tacticalDepth, context);
+    if (forcingMove >= 0) {
+      return {
+        index: forcingMove,
+        depth: settings.tacticalDepth,
+        tacticalDepth: settings.tacticalDepth,
+        nodes: context.nodes,
+        elapsedMs: performance.now() - started,
+        forced: true
+      };
+    }
+
+    for (let depth = 1; depth <= settings.positionalDepth; depth += 1) {
+      context.cache.clear();
+      const result = searchRoot(board, aiColor, humanColor, depth, settings, context, bestMove);
+      bestMove = result.index;
+      completedDepth = depth;
+    }
+  } catch (error) {
+    if (!(error instanceof SearchTimeout)) throw error;
+    timedOut = true;
+  }
+
+  return {
+    index: bestMove,
+    depth: completedDepth,
+    tacticalDepth: settings.tacticalDepth,
+    nodes: context.nodes,
+    elapsedMs: performance.now() - started,
+    timedOut
+  };
+}
+
+export function chooseAiMove(board, aiColor, humanColor, difficulty = "medium", overrides) {
+  return analyzeAiMove(board, aiColor, humanColor, difficulty, overrides).index;
 }
