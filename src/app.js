@@ -1,4 +1,5 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
+import { chooseAiMove } from "./ai.js";
 
 const SIZE = 15;
 const BLACK = 1;
@@ -288,98 +289,15 @@ function handleBoardClick(event) {
   }
 }
 
-function nearbyCandidates(board) {
-  const occupied = board.some(Boolean);
-  if (!occupied) return [Math.floor((SIZE * SIZE) / 2)];
-  const result = new Set();
-  board.forEach((stone, index) => {
-    if (!stone) return;
-    const row = Math.floor(index / SIZE);
-    const col = index % SIZE;
-    for (let dr = -2; dr <= 2; dr += 1) {
-      for (let dc = -2; dc <= 2; dc += 1) {
-        const r = row + dr;
-        const c = col + dc;
-        if (r >= 0 && r < SIZE && c >= 0 && c < SIZE && board[r * SIZE + c] === EMPTY) result.add(r * SIZE + c);
-      }
-    }
-  });
-  return [...result];
-}
-
-function directionalPotential(board, index, color) {
-  const row = Math.floor(index / SIZE);
-  const col = index % SIZE;
-  let total = 0;
-  for (const [dr, dc] of [[1, 0], [0, 1], [1, 1], [1, -1]]) {
-    let count = 1;
-    let open = 0;
-    for (const sign of [-1, 1]) {
-      for (let step = 1; step <= 4; step += 1) {
-        const r = row + dr * step * sign;
-        const c = col + dc * step * sign;
-        if (r < 0 || r >= SIZE || c < 0 || c >= SIZE) break;
-        const value = board[r * SIZE + c];
-        if (value === color) count += 1;
-        else { if (value === EMPTY) open += 1; break; }
-      }
-    }
-    const weights = [0, 2, 12, 80, 700, 100000];
-    total += weights[Math.min(count, 5)] * (open === 2 ? 1.7 : open === 1 ? 1 : .2);
-  }
-  const centerDistance = Math.abs(row - 7) + Math.abs(col - 7);
-  return total + Math.max(0, 14 - centerDistance) * .35;
-}
-
-function bestAiMove(difficulty) {
-  const aiColor = game.aiColor;
-  const humanColor = game.playerColor;
-  const candidates = nearbyCandidates(game.board);
-  if (difficulty === "easy") return candidates[Math.floor(Math.random() * candidates.length)];
-
-  const scored = candidates.map((index) => {
-    game.board[index] = aiColor;
-    const wins = getWinningLine(game.board, index, aiColor).length > 0;
-    game.board[index] = humanColor;
-    const blocksWin = getWinningLine(game.board, index, humanColor).length > 0;
-    game.board[index] = EMPTY;
-    let score = wins ? 1_000_000 : blocksWin ? 850_000 : directionalPotential(game.board, index, aiColor) * 1.15 + directionalPotential(game.board, index, humanColor);
-    return { index, score };
-  }).sort((a, b) => b.score - a.score);
-
-  if (difficulty === "medium") {
-    const pool = scored.slice(0, Math.min(4, scored.length));
-    return pool[Math.floor(Math.random() * pool.length)].index;
-  }
-
-  const top = scored.slice(0, Math.min(14, scored.length));
-  for (const move of top) {
-    if (move.score >= 850_000) continue;
-    game.board[move.index] = aiColor;
-    const replies = nearbyCandidates(game.board);
-    let danger = 0;
-    for (const reply of replies) {
-      game.board[reply] = humanColor;
-      const immediate = getWinningLine(game.board, reply, humanColor).length > 0;
-      game.board[reply] = EMPTY;
-      danger = Math.max(danger, immediate ? 500_000 : directionalPotential(game.board, reply, humanColor));
-    }
-    game.board[move.index] = EMPTY;
-    move.score -= danger * .72;
-  }
-  top.sort((a, b) => b.score - a.score);
-  return top[0].index;
-}
-
 function scheduleAiMove() {
   window.clearTimeout(aiTimer);
   aiTimer = window.setTimeout(() => {
     if (gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor) return;
-    const index = bestAiMove(game.difficulty);
+    const index = chooseAiMove(game.board, game.aiColor, game.playerColor, game.difficulty);
     placeLocalStone(index, game.aiColor);
     renderBoard();
     if (game.status !== "playing") settleSingleRound();
-  }, game.difficulty === "hard" ? 620 : 430);
+  }, game.difficulty === "hard" ? 680 : game.difficulty === "medium" ? 520 : 400);
 }
 
 function startSingleGame() {
@@ -392,7 +310,7 @@ function startSingleGame() {
   const labels = { easy: "輕鬆", medium: "普通", hard: "困難" };
   els.gameModeLabel.textContent = "SINGLE MATCH";
   els.gameTitle.textContent = `挑戰 ${labels[difficulty]} AI`;
-  els.opponentName.textContent = difficulty === "easy" ? "小棋手 AI" : difficulty === "hard" ? "棋聖 AI" : "思考者 AI";
+  els.opponentName.textContent = difficulty === "easy" ? "戰術家 AI" : difficulty === "hard" ? "棋聖 AI" : "推演者 AI";
   els.opponentTag.textContent = labels[difficulty];
   els.singleDialog.close();
   startSingleRound(difficulty);
