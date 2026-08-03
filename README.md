@@ -13,7 +13,7 @@
 
 ```bash
 npm install
-npm run web
+npm start
 ```
 
 開啟 [http://localhost:5173](http://localhost:5173)。如要測試線上邀請，可再開一個無痕視窗；每個分頁會被視為獨立玩家。
@@ -21,8 +21,21 @@ npm run web
 ## 執行 macOS 桌面版
 
 ```bash
-npm start
+npm run desktop
 ```
+
+## 部署 Koyeb 後端
+
+Koyeb 可以直接從這個 GitHub repository 使用 Node.js Buildpack 部署：
+
+- Repository：`tingchuchi/gomoku-online`
+- Branch：`main`
+- Run command：`npm start`
+- Service type：Web Service
+- Instance：Free
+- Environment variable：`HOST=0.0.0.0`
+
+Koyeb 會自動提供 `PORT`，`server.mjs` 會讀取並使用它。部署完成後，將 Koyeb 的 HTTPS 網址填入 `config.js`，再推送到 GitHub Pages。
 
 ## 部署到 GitHub Pages
 

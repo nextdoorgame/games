@@ -5,10 +5,14 @@
   "type": "module",
   "main": "electron/main.mjs",
   "scripts": {
-    "start": "electron .",
+    "start": "node server.mjs",
+    "desktop": "electron .",
     "web": "node server.mjs",
     "build:mac": "electron-builder --mac",
     "dist": "electron-builder"
+  },
+  "engines": {
+    "node": "22.x"
   },
   "devDependencies": {
     "electron": "^31.7.7",
