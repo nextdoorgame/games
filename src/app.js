@@ -144,6 +144,8 @@ function renderStaticLobby() {
 
 function resetGameState(mode, options = {}) {
   cancelAiMove();
+  els.board.removeAttribute("data-ai-engine");
+  els.board.removeAttribute("data-ai-depth");
   recordedGameKey = "";
   gameMode = mode;
   game = {
@@ -306,8 +308,8 @@ function scheduleAiMove() {
     if (gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor) return;
     const expectedMoveCount = game.moves.length;
     const difficulty = game.difficulty;
-    const depthLabels = { easy: 5, medium: 10, hard: 20 };
-    els.gameStatus.textContent = `AI 正在進行${difficulty === "hard" ? "最高 " : ""}${depthLabels[difficulty]} 層推演…`;
+    const thinkLabels = { easy: "0.5 秒", medium: "1.5 秒", hard: "3.5 秒全力" };
+    els.gameStatus.textContent = `Rapfi 正在進行 ${thinkLabels[difficulty]}搜尋…`;
 
     const finishMove = (index) => {
       if (requestId !== aiRequest || gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor || game.moves.length !== expectedMoveCount) return;
@@ -317,11 +319,14 @@ function scheduleAiMove() {
       if (game.status !== "playing") settleSingleRound();
     };
 
-    const worker = new Worker(new URL("./ai-worker.js", import.meta.url), { type: "module" });
+    const worker = new Worker(new URL("./ai-worker.js", import.meta.url));
     aiWorker = worker;
     worker.addEventListener("message", (event) => {
       worker.terminate();
       if (aiWorker === worker) aiWorker = null;
+      els.board.dataset.aiEngine = event.data.engine || "unknown";
+      els.board.dataset.aiDepth = String(event.data.depth || 0);
+      if (event.data.engine !== "rapfi") showToast("Rapfi 無法載入，已切換備援 AI");
       finishMove(event.data.index);
     }, { once: true });
     worker.addEventListener("error", (event) => {
@@ -351,7 +356,7 @@ function startSingleGame() {
   const labels = { easy: "初級", medium: "進階", hard: "困難" };
   els.gameModeLabel.textContent = "SINGLE MATCH";
   els.gameTitle.textContent = `挑戰 ${labels[difficulty]} AI`;
-  els.opponentName.textContent = difficulty === "easy" ? "戰術家 AI" : difficulty === "hard" ? "棋聖 AI" : "深思者 AI";
+  els.opponentName.textContent = difficulty === "easy" ? "Rapfi 戰術家" : difficulty === "hard" ? "Rapfi 棋聖" : "Rapfi 棋手";
   els.opponentTag.textContent = labels[difficulty];
   els.singleDialog.close();
   startSingleRound(difficulty);
