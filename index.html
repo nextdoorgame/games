@@ -131,6 +131,10 @@
                 <div class="match-divider"><span>VS</span></div>
                 <div id="meRow" class="match-player active"><div class="stone-icon black-stone"></div><div><small>你</small><strong id="gamePlayerName">棋手</strong></div><span>你</span></div>
               </div>
+              <div class="series-info" aria-live="polite">
+                <div><span id="seriesFormat">三戰兩勝</span><small id="roundLabel">第 1 局</small></div>
+                <strong><span id="mySeriesScore">0</span><i>:</i><span id="opponentSeriesScore">0</span></strong>
+              </div>
               <div class="move-info"><span>目前手數</span><strong id="moveCount">0</strong></div>
               <p id="gameStatus" class="game-status">黑棋先行，請選擇交叉點落子。</p>
               <div class="game-actions">
@@ -151,13 +155,17 @@
     <dialog id="singleDialog" class="modal">
       <form method="dialog">
         <button class="modal-close" value="cancel" aria-label="關閉">×</button>
-        <span class="eyebrow">SINGLE PLAYER</span><h2>設定你的挑戰</h2><p>選擇 AI 強度與執棋顏色，隨時都可以悔棋。</p>
+        <span class="eyebrow">SINGLE PLAYER</span><h2>設定你的挑戰</h2><p>選擇 AI 強度、系列賽制與第一局執棋顏色，之後每局會交換黑白。</p>
         <fieldset><legend>AI 難度</legend><div class="choice-grid difficulty-grid">
           <label><input type="radio" name="difficulty" value="easy"><span><b>輕鬆</b><small>初次練習</small></span></label>
           <label><input type="radio" name="difficulty" value="medium" checked><span><b>普通</b><small>有攻有守</small></span></label>
           <label><input type="radio" name="difficulty" value="hard"><span><b>困難</b><small>全力應戰</small></span></label>
         </div></fieldset>
-        <fieldset><legend>執棋顏色</legend><div class="choice-grid color-grid">
+        <fieldset><legend>系列賽制</legend><div class="choice-grid series-grid">
+          <label><input type="radio" name="bestOf" value="3" checked><span><b>三戰兩勝</b><small>先拿 2 勝</small></span></label>
+          <label><input type="radio" name="bestOf" value="5"><span><b>五戰三勝</b><small>先拿 3 勝</small></span></label>
+        </div></fieldset>
+        <fieldset><legend>第一局執棋顏色</legend><div class="choice-grid color-grid">
           <label><input type="radio" name="color" value="black" checked><span><i class="mini-stone black-stone"></i>黑棋先手</span></label>
           <label><input type="radio" name="color" value="white"><span><i class="mini-stone white-stone"></i>白棋後手</span></label>
         </div></fieldset>
@@ -165,10 +173,31 @@
       </form>
     </dialog>
 
+    <dialog id="onlineSeriesDialog" class="modal">
+      <form method="dialog">
+        <button class="modal-close" value="cancel" aria-label="關閉">×</button>
+        <span class="eyebrow">ONLINE SERIES</span><h2>設定對戰賽制</h2><p>邀請 <strong id="onlineOpponentName">棋手</strong> 進行系列賽；每局會自動交換黑白。</p>
+        <fieldset><legend>系列賽制</legend><div class="choice-grid series-grid">
+          <label><input type="radio" name="bestOf" value="3" checked><span><b>三戰兩勝</b><small>先拿 2 勝</small></span></label>
+          <label><input type="radio" name="bestOf" value="5"><span><b>五戰三勝</b><small>先拿 3 勝</small></span></label>
+        </div></fieldset>
+        <button id="confirmOnlineInvite" class="primary-button full" value="default" type="button">送出對戰邀請 →</button>
+      </form>
+    </dialog>
+
     <dialog id="inviteDialog" class="modal invite-modal">
       <form method="dialog">
-        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一五子棋對戰。</p>
+        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一五子棋對戰。<br><span id="inviterSeriesLabel">三戰兩勝・每局交換黑白</span></p>
         <div class="invite-actions"><button id="declineInvite" value="cancel" type="button">婉拒</button><button id="acceptInvite" class="primary-button" value="default" type="button">接受對戰</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="roundEndDialog" class="modal invite-modal">
+      <form method="dialog">
+        <div id="roundEndIcon" class="invite-icon">●</div><span class="eyebrow">ROUND COMPLETE</span><h2 id="roundEndTitle">本局結束</h2><p id="roundEndMessage">目前系列賽比分</p>
+        <div class="round-score"><span id="roundMyName">你</span><strong><b id="roundMyScore">0</b><i>:</i><b id="roundOpponentScore">0</b></strong><span id="roundOpponentName">對手</span></div>
+        <p id="nextColorMessage" class="next-color-message">下一局將交換黑白。</p>
+        <div class="invite-actions"><button id="endSeries" value="cancel" type="button">結束系列賽</button><button id="continueSeries" class="primary-button" value="default" type="button">繼續下一局</button></div>
       </form>
     </dialog>
 

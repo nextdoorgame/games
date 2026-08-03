@@ -67,7 +67,7 @@ function cleanupLobby() {
 
 function activeGameFor(playerId) {
   return [...games.values()]
-    .filter((game) => game.status === "playing" && game.players.some((player) => player.id === playerId))
+    .filter((game) => game.matchStatus === "active" && game.players.some((player) => player.id === playerId))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
 }
 
@@ -99,8 +99,38 @@ function publicGame(game) {
     status: game.status,
     winner: game.winner,
     winLine: game.winLine,
+    bestOf: game.bestOf,
+    targetWins: game.targetWins,
+    round: game.round,
+    scores: game.scores,
+    seriesWinnerId: game.seriesWinnerId,
+    rematchRequests: game.rematchRequests,
+    matchStatus: game.matchStatus,
+    rematchDeclinedBy: game.rematchDeclinedBy,
     updatedAt: game.updatedAt
   };
+}
+
+function resetRound(game, restartSeries) {
+  game.players.forEach((player) => {
+    player.color = player.color === BLACK ? WHITE : BLACK;
+  });
+  if (restartSeries) {
+    game.scores = Object.fromEntries(game.players.map((player) => [player.id, 0]));
+    game.round = 1;
+    game.seriesWinnerId = null;
+  } else {
+    game.round += 1;
+  }
+  game.board = Array(BOARD_SIZE * BOARD_SIZE).fill(0);
+  game.moves = [];
+  game.turn = BLACK;
+  game.status = "playing";
+  game.winner = 0;
+  game.winLine = [];
+  game.rematchRequests = [];
+  game.rematchDeclinedBy = null;
+  game.updatedAt = Date.now();
 }
 
 async function handleApi(req, res, url) {
@@ -124,6 +154,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/invite") {
     const body = await readJson(req);
+    const bestOf = Number(body.bestOf) === 5 ? 5 : 3;
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
@@ -131,7 +162,7 @@ async function handleApi(req, res, url) {
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
     const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
@@ -161,6 +192,14 @@ async function handleApi(req, res, url) {
       status: "playing",
       winner: 0,
       winLine: [],
+      bestOf: invite.bestOf === 5 ? 5 : 3,
+      targetWins: invite.bestOf === 5 ? 3 : 2,
+      round: 1,
+      scores: { [from.id]: 0, [to.id]: 0 },
+      seriesWinnerId: null,
+      rematchRequests: [],
+      matchStatus: "active",
+      rematchDeclinedBy: null,
       updatedAt: Date.now()
     };
     games.set(game.id, game);
@@ -195,12 +234,35 @@ async function handleApi(req, res, url) {
     if (game.winLine.length) {
       game.status = "finished";
       game.winner = player.color;
+      game.scores[player.id] += 1;
+      if (game.scores[player.id] >= game.targetWins) game.seriesWinnerId = player.id;
     } else if (game.moves.length === BOARD_SIZE * BOARD_SIZE) {
       game.status = "finished";
     } else {
       game.turn = player.color === BLACK ? WHITE : BLACK;
     }
     game.updatedAt = Date.now();
+    return sendJson(res, 200, publicGame(game));
+  }
+
+  const rematchMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/rematch$/);
+  if (req.method === "POST" && rematchMatch) {
+    const game = games.get(rematchMatch[1]);
+    if (!game) return sendJson(res, 404, { error: "找不到這場對局" });
+    const body = await readJson(req);
+    const player = game.players.find((item) => item.id === body.playerId);
+    if (!player) return sendJson(res, 403, { error: "你不在這場對局中" });
+    if (game.status !== "finished") return sendJson(res, 409, { error: "本局尚未結束" });
+    if (game.matchStatus === "closed") return sendJson(res, 409, { error: "系列賽已經結束" });
+    if (!body.accept) {
+      game.matchStatus = "closed";
+      game.rematchDeclinedBy = player.id;
+      game.updatedAt = Date.now();
+      return sendJson(res, 200, publicGame(game));
+    }
+    if (!game.rematchRequests.includes(player.id)) game.rematchRequests.push(player.id);
+    if (game.rematchRequests.length === game.players.length) resetRound(game, Boolean(game.seriesWinnerId));
+    else game.updatedAt = Date.now();
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -214,6 +276,8 @@ async function handleApi(req, res, url) {
     if (game.status === "playing") {
       game.status = "finished";
       game.winner = player.color === BLACK ? WHITE : BLACK;
+      game.matchStatus = "closed";
+      game.rematchDeclinedBy = player.id;
       game.updatedAt = Date.now();
     }
     return sendJson(res, 200, publicGame(game));

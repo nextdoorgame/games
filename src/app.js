@@ -20,9 +20,13 @@ const els = {
   toast: document.querySelector("#toast"),
   singleDialog: document.querySelector("#singleDialog"),
   inviteDialog: document.querySelector("#inviteDialog"),
+  onlineSeriesDialog: document.querySelector("#onlineSeriesDialog"),
+  roundEndDialog: document.querySelector("#roundEndDialog"),
   nameDialog: document.querySelector("#nameDialog"),
   nameInput: document.querySelector("#nameInput"),
   inviterName: document.querySelector("#inviterName"),
+  inviterSeriesLabel: document.querySelector("#inviterSeriesLabel"),
+  onlineOpponentName: document.querySelector("#onlineOpponentName"),
   board: document.querySelector("#board"),
   gameModeLabel: document.querySelector("#gameModeLabel"),
   gameTitle: document.querySelector("#gameTitle"),
@@ -33,6 +37,20 @@ const els = {
   opponentTag: document.querySelector("#opponentTag"),
   gamePlayerName: document.querySelector("#gamePlayerName"),
   moveCount: document.querySelector("#moveCount"),
+  seriesFormat: document.querySelector("#seriesFormat"),
+  roundLabel: document.querySelector("#roundLabel"),
+  mySeriesScore: document.querySelector("#mySeriesScore"),
+  opponentSeriesScore: document.querySelector("#opponentSeriesScore"),
+  roundEndIcon: document.querySelector("#roundEndIcon"),
+  roundEndTitle: document.querySelector("#roundEndTitle"),
+  roundEndMessage: document.querySelector("#roundEndMessage"),
+  roundMyName: document.querySelector("#roundMyName"),
+  roundMyScore: document.querySelector("#roundMyScore"),
+  roundOpponentScore: document.querySelector("#roundOpponentScore"),
+  roundOpponentName: document.querySelector("#roundOpponentName"),
+  nextColorMessage: document.querySelector("#nextColorMessage"),
+  endSeries: document.querySelector("#endSeries"),
+  continueSeries: document.querySelector("#continueSeries"),
   gameStatus: document.querySelector("#gameStatus"),
   undoMove: document.querySelector("#undoMove"),
   restartGame: document.querySelector("#restartGame"),
@@ -50,10 +68,15 @@ let aiTimer = null;
 let lobbyTimer = null;
 let onlineTimer = null;
 let currentInvite = null;
+let pendingInvitePlayer = null;
+let pendingInviteButton = null;
 let pendingInvites = new Set();
 let toastTimer = null;
 let isFetchingLobby = false;
 let recordedGameKey = "";
+let series = null;
+let roundDialogKey = "";
+let onlineMatchClosedHandled = false;
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -124,27 +147,40 @@ function renderBoard() {
   if (!game) return;
   const lastIndex = game.moves.at(-1)?.index ?? -1;
   const winIndexes = new Set(game.winLine || []);
-  const fragment = document.createDocumentFragment();
+  if (els.board.children.length !== SIZE * SIZE) {
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < SIZE * SIZE; index += 1) {
+      const row = Math.floor(index / SIZE);
+      const col = index % SIZE;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "intersection";
+      button.style.left = `${(col / (SIZE - 1)) * 100}%`;
+      button.style.top = `${(row / (SIZE - 1)) * 100}%`;
+      button.dataset.index = String(index);
+      button.dataset.stone = String(EMPTY);
+      button.setAttribute("role", "gridcell");
+      fragment.append(button);
+    }
+    els.board.replaceChildren(fragment);
+  }
 
   game.board.forEach((stone, index) => {
     const row = Math.floor(index / SIZE);
     const col = index % SIZE;
-    const button = document.createElement("button");
-    button.type = "button";
+    const button = els.board.children[index];
     button.className = `intersection${stone ? " occupied" : ""}${lastIndex === index ? " last" : ""}${winIndexes.has(index) ? " win" : ""}`;
-    button.style.left = `${(col / (SIZE - 1)) * 100}%`;
-    button.style.top = `${(row / (SIZE - 1)) * 100}%`;
-    button.dataset.index = String(index);
-    button.setAttribute("role", "gridcell");
     button.setAttribute("aria-label", `${String.fromCharCode(65 + col)}${row + 1}${stone === BLACK ? " 黑棋" : stone === WHITE ? " 白棋" : " 空位"}`);
-    if (stone) {
-      const piece = document.createElement("span");
-      piece.className = `game-stone ${stone === BLACK ? "black" : "white"}`;
-      button.append(piece);
+    if (Number(button.dataset.stone) !== stone) {
+      button.dataset.stone = String(stone);
+      button.replaceChildren();
+      if (stone) {
+        const piece = document.createElement("span");
+        piece.className = `game-stone ${stone === BLACK ? "black" : "white"} new`;
+        button.append(piece);
+      }
     }
-    fragment.append(button);
   });
-  els.board.replaceChildren(fragment);
   renderGamePanel();
 }
 
@@ -166,6 +202,7 @@ function renderGamePanel() {
   els.turnPill.querySelector("span").textContent = game.status !== "playing" ? "本局已結束" : myTurn ? "輪到你了" : `${colorName}思考中`;
   els.meRow.classList.toggle("active", myTurn);
   els.opponentRow.classList.toggle("active", !myTurn && game.status === "playing");
+  renderSeriesPanel();
 
   const myStone = els.meRow.querySelector(".stone-icon");
   const opponentStone = els.opponentRow.querySelector(".stone-icon");
@@ -181,8 +218,21 @@ function renderGamePanel() {
   }
 
   els.undoMove.hidden = gameMode !== "single";
-  els.undoMove.disabled = gameMode !== "single" || game.moves.length <= (game.playerColor === WHITE ? 1 : 0);
+  els.undoMove.disabled = gameMode !== "single" || game.status !== "playing" || game.moves.length <= (game.playerColor === WHITE ? 1 : 0);
   els.restartGame.hidden = gameMode !== "single";
+}
+
+function renderSeriesPanel() {
+  if (!game) return;
+  const bestOf = gameMode === "single" ? series?.bestOf || 3 : game.bestOf || 3;
+  const round = gameMode === "single" ? series?.round || 1 : game.round || 1;
+  const myScore = gameMode === "single" ? series?.myWins || 0 : game.scores?.[playerId] || 0;
+  const opponent = gameMode === "online" ? game.players?.find((item) => item.id !== playerId) : null;
+  const opponentScore = gameMode === "single" ? series?.opponentWins || 0 : game.scores?.[opponent?.id] || 0;
+  els.seriesFormat.textContent = bestOf === 5 ? "五戰三勝" : "三戰兩勝";
+  els.roundLabel.textContent = `第 ${round} 局・每局交換黑白`;
+  els.mySeriesScore.textContent = String(myScore);
+  els.opponentSeriesScore.textContent = String(opponentScore);
 }
 
 function getWinningLine(board, index, color) {
@@ -213,10 +263,8 @@ function placeLocalStone(index, color) {
     game.winner = color;
     game.winLine = line;
     game.status = "finished";
-    saveCurrentRecord();
   } else if (game.moves.length === SIZE * SIZE) {
     game.status = "finished";
-    saveCurrentRecord();
   } else {
     game.turn = color === BLACK ? WHITE : BLACK;
   }
@@ -231,6 +279,7 @@ function handleBoardClick(event) {
     if (game.turn !== game.playerColor || !placeLocalStone(index, game.playerColor)) return;
     renderBoard();
     if (game.status === "playing") scheduleAiMove();
+    else settleSingleRound();
   } else if (gameMode === "online" && game.turn === game.myColor) {
     makeOnlineMove(index);
   }
@@ -326,6 +375,7 @@ function scheduleAiMove() {
     const index = bestAiMove(game.difficulty);
     placeLocalStone(index, game.aiColor);
     renderBoard();
+    if (game.status !== "playing") settleSingleRound();
   }, game.difficulty === "hard" ? 620 : 430);
 }
 
@@ -334,16 +384,35 @@ function startSingleGame() {
   const data = new FormData(form);
   const difficulty = data.get("difficulty") || "medium";
   const color = data.get("color") === "white" ? WHITE : BLACK;
-  resetGameState("single", { difficulty, playerColor: color, aiColor: color === BLACK ? WHITE : BLACK });
+  const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
+  series = { mode: "single", bestOf, target: Math.ceil(bestOf / 2), round: 1, myWins: 0, opponentWins: 0, draws: 0, initialPlayerColor: color };
   const labels = { easy: "輕鬆", medium: "普通", hard: "困難" };
   els.gameModeLabel.textContent = "SINGLE MATCH";
   els.gameTitle.textContent = `挑戰 ${labels[difficulty]} AI`;
   els.opponentName.textContent = difficulty === "easy" ? "小棋手 AI" : difficulty === "hard" ? "棋聖 AI" : "思考者 AI";
   els.opponentTag.textContent = labels[difficulty];
   els.singleDialog.close();
+  startSingleRound(difficulty);
+}
+
+function startSingleRound(difficulty = game?.difficulty || "medium") {
+  const playerColor = series.round % 2 === 1 ? series.initialPlayerColor : series.initialPlayerColor === BLACK ? WHITE : BLACK;
+  resetGameState("single", { difficulty, playerColor, aiColor: playerColor === BLACK ? WHITE : BLACK, roundSettled: false });
+  roundDialogKey = "";
   showView("game");
   renderBoard();
   if (game.aiColor === BLACK) scheduleAiMove();
+}
+
+function settleSingleRound() {
+  if (gameMode !== "single" || game.status === "playing" || game.roundSettled) return;
+  game.roundSettled = true;
+  if (game.winner === game.playerColor) series.myWins += 1;
+  else if (game.winner === game.aiColor) series.opponentWins += 1;
+  else series.draws += 1;
+  saveCurrentRecord();
+  renderGamePanel();
+  showRoundEndDialog();
 }
 
 function undoSingleMove() {
@@ -368,7 +437,7 @@ function undoSingleMove() {
 function restartSingle() {
   if (gameMode !== "single") return;
   const { difficulty, playerColor, aiColor } = game;
-  resetGameState("single", { difficulty, playerColor, aiColor });
+  resetGameState("single", { difficulty, playerColor, aiColor, roundSettled: false });
   renderBoard();
   if (aiColor === BLACK) scheduleAiMove();
 }
@@ -398,6 +467,7 @@ async function fetchLobby() {
     } else if (data.incomingInvites.length && !currentInvite && !els.inviteDialog.open) {
       currentInvite = data.incomingInvites[0];
       els.inviterName.textContent = currentInvite.fromName;
+      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・每局交換黑白`;
       els.inviteDialog.showModal();
     }
   } catch (error) {
@@ -426,20 +496,28 @@ function renderPlayers(players) {
     button.type = "button";
     button.textContent = pendingInvites.has(player.id) ? "等待回覆" : "邀請對戰";
     button.disabled = pendingInvites.has(player.id);
-    button.addEventListener("click", () => sendInvite(player, button));
+    button.addEventListener("click", () => prepareOnlineInvite(player, button));
     row.append(avatar, copy, button);
     return row;
   }));
 }
 
-async function sendInvite(player, button) {
+function prepareOnlineInvite(player, button) {
+  pendingInvitePlayer = player;
+  pendingInviteButton = button;
+  els.onlineOpponentName.textContent = player.name;
+  els.onlineSeriesDialog.showModal();
+}
+
+async function sendInvite(player, button, bestOf) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
-    showToast(`已邀請 ${player.name} 對戰`);
+    els.onlineSeriesDialog.close();
+    showToast(`已邀請 ${player.name} 進行${bestOf === 5 ? "五戰三勝" : "三戰兩勝"}`);
   } catch (error) {
     button.disabled = false;
     button.textContent = "邀請對戰";
@@ -469,6 +547,8 @@ async function startOnlineGame(gameId) {
   els.opponentTag.textContent = "在線";
   els.undoMove.hidden = true;
   els.restartGame.hidden = true;
+  onlineMatchClosedHandled = false;
+  roundDialogKey = "";
   showView("game");
   await fetchOnlineGame(gameId);
   window.clearInterval(onlineTimer);
@@ -478,36 +558,131 @@ async function startOnlineGame(gameId) {
 async function fetchOnlineGame(gameId) {
   try {
     const data = await api(`/api/game/${encodeURIComponent(gameId)}?playerId=${encodeURIComponent(playerId)}`);
-    const me = data.players.find((player) => player.id === playerId);
-    const opponent = data.players.find((player) => player.id !== playerId);
-    game = {
-      ...data,
-      myColor: me.color,
-      board: data.board,
-      moves: data.moves,
-      winLine: data.winLine || []
-    };
-    els.opponentName.textContent = opponent.name;
-    renderBoard();
-    if (game.status !== "playing") {
-      window.clearInterval(onlineTimer);
-      saveCurrentRecord();
-    }
+    applyOnlineGameData(data);
   } catch (error) {
     window.clearInterval(onlineTimer);
     showToast(error.message);
   }
 }
 
+function applyOnlineGameData(data) {
+  const me = data.players.find((player) => player.id === playerId);
+  const opponent = data.players.find((player) => player.id !== playerId);
+  game = {
+    ...data,
+    myColor: me.color,
+    board: data.board,
+    moves: data.moves,
+    winLine: data.winLine || []
+  };
+  els.opponentName.textContent = opponent.name;
+  renderBoard();
+
+  if (game.status === "playing") {
+    roundDialogKey = "";
+    if (els.roundEndDialog.open) els.roundEndDialog.close();
+    return;
+  }
+
+  saveCurrentRecord();
+  if (game.matchStatus === "closed") {
+    if (!onlineMatchClosedHandled) {
+      onlineMatchClosedHandled = true;
+      if (els.roundEndDialog.open) els.roundEndDialog.close();
+      showToast(game.rematchDeclinedBy === playerId ? "系列賽已結束" : "對手已結束系列賽");
+      window.clearInterval(onlineTimer);
+    }
+    return;
+  }
+  if (!game.rematchRequests?.includes(playerId)) showRoundEndDialog();
+  else els.gameStatus.textContent = "已同意繼續，等待對手確認…";
+}
+
 async function makeOnlineMove(index) {
   if (!game?.id) return;
   try {
     const data = await api(`/api/game/${encodeURIComponent(game.id)}/move`, { method: "POST", body: JSON.stringify({ playerId, index }) });
-    game = { ...game, ...data };
-    renderBoard();
+    applyOnlineGameData(data);
   } catch (error) {
     showToast(error.message);
   }
+}
+
+function showRoundEndDialog() {
+  if (!game || game.status === "playing") return;
+  const key = gameMode === "online" ? `${game.id}:${game.round}` : `single:${series.round}:${game.moves.length}:${game.winner}`;
+  if (roundDialogKey === key || els.roundEndDialog.open) return;
+  roundDialogKey = key;
+
+  const mine = playerColor();
+  const wonRound = game.winner === mine;
+  const draw = game.winner === EMPTY;
+  const opponent = gameMode === "online" ? game.players.find((item) => item.id !== playerId) : null;
+  const myScore = gameMode === "single" ? series.myWins : game.scores?.[playerId] || 0;
+  const opponentScore = gameMode === "single" ? series.opponentWins : game.scores?.[opponent.id] || 0;
+  const target = gameMode === "single" ? series.target : game.targetWins;
+  const seriesComplete = myScore >= target || opponentScore >= target;
+  const nextColor = mine === BLACK ? "白棋" : "黑棋";
+
+  els.roundEndIcon.textContent = draw ? "＝" : wonRound ? "勝" : "●";
+  els.roundEndTitle.textContent = seriesComplete ? (myScore >= target ? "你贏得系列賽！" : "系列賽結束") : draw ? "本局和棋" : wonRound ? "你贏下這一局！" : "對手贏下這一局";
+  els.roundEndMessage.textContent = seriesComplete ? `系列賽最終比分 ${myScore}：${opponentScore}` : `目前比分 ${myScore}：${opponentScore}，要繼續下一局嗎？`;
+  els.roundMyName.textContent = "你";
+  els.roundOpponentName.textContent = opponent?.name || els.opponentName.textContent;
+  els.roundMyScore.textContent = String(myScore);
+  els.roundOpponentScore.textContent = String(opponentScore);
+  els.nextColorMessage.textContent = seriesComplete ? `再開一個系列賽時，你將改執${nextColor}。` : `下一局你將改執${nextColor}，雙方交換黑白。`;
+  els.continueSeries.textContent = seriesComplete ? "再來一個系列賽" : "繼續下一局";
+  els.roundEndDialog.showModal();
+}
+
+async function continueCurrentSeries() {
+  if (!game || game.status === "playing") return;
+  els.continueSeries.disabled = true;
+  if (gameMode === "single") {
+    const complete = series.myWins >= series.target || series.opponentWins >= series.target;
+    const difficulty = game.difficulty;
+    if (complete) {
+      series.myWins = 0;
+      series.opponentWins = 0;
+      series.draws = 0;
+      series.round = 1;
+      series.initialPlayerColor = game.playerColor === BLACK ? WHITE : BLACK;
+    } else {
+      series.round += 1;
+    }
+    els.roundEndDialog.close();
+    els.continueSeries.disabled = false;
+    startSingleRound(difficulty);
+    return;
+  }
+
+  try {
+    const data = await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: true }) });
+    els.roundEndDialog.close();
+    applyOnlineGameData(data);
+    if (data.status !== "playing") showToast("已同意繼續，等待對手確認");
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    els.continueSeries.disabled = false;
+  }
+}
+
+async function endCurrentSeries() {
+  if (els.roundEndDialog.open) els.roundEndDialog.close();
+  if (gameMode === "online" && game?.id && game.matchStatus !== "closed") {
+    try {
+      await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: false }) });
+    } catch { /* Returning to the lobby remains safe if the match already closed. */ }
+  }
+  window.clearTimeout(aiTimer);
+  window.clearInterval(onlineTimer);
+  const destination = gameMode === "online" ? "lobby" : "home";
+  gameMode = null;
+  game = null;
+  series = null;
+  showView(destination);
 }
 
 async function leaveCurrentGame() {
@@ -517,10 +692,16 @@ async function leaveCurrentGame() {
     try {
       await api(`/api/game/${encodeURIComponent(game.id)}/resign`, { method: "POST", body: JSON.stringify({ playerId }) });
     } catch { /* The lobby remains usable if a stale game already ended. */ }
+  } else if (gameMode === "online" && game?.id && game.matchStatus !== "closed") {
+    try {
+      await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: false }) });
+    } catch { /* The lobby remains usable if the match already closed. */ }
   }
   const destination = gameMode === "online" ? "lobby" : "home";
   gameMode = null;
   game = null;
+  series = null;
+  if (els.roundEndDialog.open) els.roundEndDialog.close();
   showView(destination);
 }
 
@@ -531,7 +712,7 @@ function stopLobbyPolling() {
 
 function saveCurrentRecord() {
   if (!game || game.status === "playing") return;
-  const key = gameMode === "online" ? game.id : `${game.moves.length}-${game.moves.at(-1)?.index}-${game.winner}`;
+  const key = gameMode === "online" ? `${game.id}-${game.round || 1}` : `${series?.round || 1}-${game.moves.length}-${game.moves.at(-1)?.index}-${game.winner}`;
   if (recordedGameKey === key) return;
   recordedGameKey = key;
   const mine = playerColor();
@@ -575,6 +756,12 @@ document.addEventListener("click", (event) => {
 
 document.querySelector("#openSingleSetup").addEventListener("click", () => els.singleDialog.showModal());
 document.querySelector("#startSingle").addEventListener("click", startSingleGame);
+document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
+  if (!pendingInvitePlayer || !pendingInviteButton) return;
+  const data = new FormData(els.onlineSeriesDialog.querySelector("form"));
+  const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
+  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf);
+});
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {
   const next = els.nameInput.value.trim();
@@ -593,6 +780,9 @@ els.refreshLobby.addEventListener("click", fetchLobby);
 els.board.addEventListener("click", handleBoardClick);
 els.undoMove.addEventListener("click", undoSingleMove);
 els.restartGame.addEventListener("click", restartSingle);
+els.continueSeries.addEventListener("click", continueCurrentSeries);
+els.endSeries.addEventListener("click", endCurrentSeries);
+els.roundEndDialog.addEventListener("cancel", (event) => event.preventDefault());
 window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); });
 
 updateIdentity();
