@@ -20,7 +20,7 @@
   },
   "build": {
     "appId": "com.local.familyboardgames",
-    "productName": "同樂棋室",
+    "productName": "隔壁同樂室",
     "files": [
       "electron/**/*",
       "src/**/*",

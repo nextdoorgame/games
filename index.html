@@ -4,15 +4,15 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f6f1" />
-    <title>同樂棋室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=platform-1" />
+    <title>隔壁同樂室 · 家庭小遊戲平台</title>
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-1" />
   </head>
   <body>
     <div class="app-shell">
       <aside class="sidebar">
         <a class="brand" href="#" data-view="home" aria-label="回首頁">
           <span class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-          <span>同樂棋室<small>FAMILY GAMES</small></span>
+          <span>隔壁同樂室<small>NEIGHBOR GAMES</small></span>
         </a>
 
         <nav class="main-nav" aria-label="主要選單">
@@ -20,7 +20,7 @@
             <span class="nav-icon">⌂</span><span>遊戲首頁</span>
           </button>
           <button class="nav-item" data-view="lobby" type="button">
-            <span class="nav-icon">♙</span><span>遊戲大廳</span><b id="lobbyCount">0</b>
+            <span class="nav-icon">♙</span><span>房間大廳</span><b id="lobbyCount">0</b>
           </button>
           <button class="nav-item" data-view="records" type="button">
             <span class="nav-icon">▤</span><span>對戰紀錄</span>
@@ -36,7 +36,7 @@
 
       <main class="main-content">
         <header class="topbar">
-          <div class="mobile-brand">同樂棋室</div>
+          <div class="mobile-brand">隔壁同樂室</div>
           <div class="profile">
             <div class="avatar" id="profileAvatar">棋</div>
             <div><strong id="profileName">棋手</strong><span><i></i> 線上</span></div>
@@ -49,23 +49,23 @@
         <section id="homeView" class="view active">
           <div class="welcome platform-welcome">
             <div>
-              <h1>今晚，來下一局</h1>
-              <p>五子棋與中國象棋，陪家人共享一段安靜又有趣的時光。</p>
+              <h1>今晚，隔壁開桌</h1>
+              <p>六款經典遊戲，和家人朋友隨時開一桌。</p>
             </div>
             <div class="welcome-table" aria-hidden="true"><i>帥</i><span></span><b></b></div>
           </div>
 
           <div class="section-heading"><div><h2>選擇遊戲</h2></div><p>單人練習，或邀請家人朋友連線對戰。</p></div>
 
-          <div class="game-library">
+          <div class="game-library six-games">
             <article class="game-card gomoku-game-card">
               <div class="game-card-head"><div><span class="game-emblem gomoku-emblem"><i></i><i></i></span><h3>五子棋</h3></div><p>19×19 棋盤・三級 AI・即時對戰</p></div>
               <div class="game-preview gomoku-preview" aria-hidden="true">
                 <span class="preview-stone black p1"></span><span class="preview-stone white p2"></span><span class="preview-stone black p3"></span><span class="preview-stone white p4"></span><span class="preview-stone black p5"></span>
               </div>
               <div class="game-card-actions">
-                <button class="primary-button game-solo-button" data-game-type="gomoku" type="button">單人挑戰</button>
-                <button class="secondary-button" data-view="lobby" data-preferred-game="gomoku" type="button">雙人連線</button>
+                <button class="primary-button game-solo-button" data-game-type="gomoku" aria-label="開始五子棋單人挑戰" type="button">單人挑戰</button>
+                <button class="secondary-button room-game-button" data-view="lobby" data-room-game="gomoku" aria-label="前往五子棋房間大廳" type="button">房間大廳</button>
               </div>
             </article>
 
@@ -75,31 +75,51 @@
                 <div class="mini-river">楚河　　漢界</div><i class="mini-xq black">將</i><i class="mini-xq black horse">馬</i><i class="mini-xq red">帥</i><i class="mini-xq red cannon">炮</i>
               </div>
               <div class="game-card-actions">
-                <button class="primary-button game-solo-button" data-game-type="xiangqi" type="button">單人挑戰</button>
-                <button class="secondary-button" data-view="lobby" data-preferred-game="xiangqi" type="button">雙人連線</button>
+                <button class="primary-button game-solo-button" data-game-type="xiangqi" aria-label="開始中國象棋單人挑戰" type="button">單人挑戰</button>
+                <button class="secondary-button room-game-button" data-view="lobby" data-room-game="xiangqi" aria-label="前往中國象棋房間大廳" type="button">房間大廳</button>
               </div>
+            </article>
+            <article class="game-card reversi-game-card">
+              <div class="game-card-head"><div><span class="game-emblem reversi-emblem">●○</span><h3>黑白棋</h3></div><p>1–2 人・翻子規則</p></div>
+              <div class="game-preview reversi-preview" aria-hidden="true"><i class="disc dark d1"></i><i class="disc light d2"></i><i class="disc dark d3"></i><i class="disc light d4"></i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="reversi" aria-label="開始黑白棋單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="reversi" aria-label="前往黑白棋房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card checkers-game-card">
+              <div class="game-card-head"><div><span class="game-emblem">✦</span><h3>中國跳棋</h3></div><p>2–3 人・連續跳躍</p></div>
+              <div class="game-preview checkers-preview" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="checkers" aria-label="開始中國跳棋本機多人遊戲" type="button">本機遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="checkers" aria-label="前往中國跳棋房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card mahjong-game-card">
+              <div class="game-card-head"><div><span class="game-emblem">發</span><h3>麻將</h3></div><p>1–4 人・AI 補位</p></div>
+              <div class="game-preview mahjong-preview" aria-hidden="true"><i>一萬</i><i>發</i><i>中</i><i>白</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="mahjong" aria-label="開始麻將本機多人遊戲" type="button">本機遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="mahjong" aria-label="前往麻將房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card bigtwo-game-card">
+              <div class="game-card-head"><div><span class="game-emblem">2♠</span><h3>大老二</h3></div><p>3–5 人・AI 補位</p></div>
+              <div class="game-preview bigtwo-preview" aria-hidden="true"><i>3♦</i><i>J♣</i><i>Q♥</i><i>2♠</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="bigtwo" aria-label="開始大老二單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="bigtwo" aria-label="前往大老二房間大廳" type="button">房間大廳</button></div>
             </article>
           </div>
 
-          <p id="onlineModeDescription" class="platform-note">兩款遊戲都支援單人悔棋、系列賽、雙人聊天與每步限時。</p>
+          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；麻將與大老二會自動由 AI 補滿空位。</p>
         </section>
 
         <section id="lobbyView" class="view">
           <div class="page-heading">
-            <div><span class="eyebrow">ONLINE LOBBY</span><h1>遊戲大廳</h1><p>選擇一位在線棋手，送出一對一對戰邀請。</p></div>
+            <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p>每款遊戲都有獨立房間，選擇空桌加入或建立新房間。</p></div>
             <div class="online-badge"><i></i><strong id="onlineCount">1</strong> 人在線</div>
           </div>
-          <div class="lobby-layout">
-            <section class="panel player-panel">
-              <div class="panel-heading"><div><h2>在線棋手</h2><p>名單會自動更新</p></div><button id="refreshLobby" class="icon-button" type="button" aria-label="更新名單">↻</button></div>
-              <div id="playerList" class="player-list"></div>
-            </section>
-            <aside class="panel lobby-side">
-              <span class="eyebrow">YOUR STATUS</span>
-              <div class="my-player-card"><div class="avatar large" id="lobbyAvatar">棋</div><div><strong id="lobbyName">棋手</strong><span><i></i> 等待對戰中</span></div></div>
-              <div class="lobby-tip"><span>!</span><p><strong>邀請提示</strong>對方接受後，系統會自動進入棋局。</p></div>
-            </aside>
+          <div id="roomGameTabs" class="room-game-tabs" aria-label="選擇遊戲"></div>
+          <div class="room-lobby-layout">
+            <section class="room-table panel"><div class="room-table-head"><span>房間名稱</span><span>人數</span><span>模式</span><span>狀態</span><span></span></div><div id="roomList"></div></section>
+            <aside class="create-room panel"><h2>建立房間</h2><label><span>房間名稱</span><input id="roomNameInput" maxlength="16" placeholder="例如：隔壁 101"></label><label><span>遊戲人數</span><select id="roomPlayerCount"></select></label><label class="ai-fill-row"><input id="roomAiFill" type="checkbox" checked><span>空位由 AI 補上</span></label><button id="createRoom" class="primary-button" type="button">建立房間</button><p>房間依遊戲分類，其他遊戲的玩家不會混入。</p></aside>
           </div>
+          <div class="legacy-lobby" hidden><button id="refreshLobby" type="button">更新</button><div id="playerList"></div><div id="lobbyAvatar"></div><div id="lobbyName"></div></div>
+        </section>
+
+        <section id="casualView" class="view casual-view">
+          <div class="game-heading"><button class="text-button" data-view="home" type="button">← 返回遊戲首頁</button><div><h1 id="casualTitle">黑白棋</h1><p id="casualSubtitle">家庭單人局</p></div><div id="casualTurn" class="turn-pill"><i></i><span>輪到你了</span></div></div>
+          <div class="casual-layout"><section id="casualBoard" class="casual-board-area" aria-live="polite"></section><aside class="casual-panel panel"><div id="casualPlayers" class="casual-players"></div><p id="casualStatus" class="game-status"></p><p id="casualRuleNote" class="casual-rule-note"></p><div class="game-actions"><button id="casualPrimaryAction" type="button">出牌</button><button id="casualPass" type="button" hidden>過牌</button><button id="casualRestart" type="button">↻ 重新開始</button></div></aside></div>
         </section>
 
         <section id="gameView" class="view game-view">
@@ -169,6 +189,10 @@
       </form>
     </dialog>
 
+    <dialog id="casualSetupDialog" class="modal">
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><h2 id="casualSetupTitle">遊戲設定</h2><p id="casualSetupDescription"></p><fieldset><legend>參加人數</legend><div id="casualPlayerOptions" class="choice-grid series-grid"></div></fieldset><fieldset><legend>AI 難度</legend><div class="choice-grid difficulty-grid"><label><input type="radio" name="casualDifficulty" value="easy"><span><b>初級</b><small>適合熟悉規則</small></span></label><label><input type="radio" name="casualDifficulty" value="medium" checked><span><b>進階</b><small>平衡攻守</small></span></label><label><input type="radio" name="casualDifficulty" value="hard"><span><b>困難</b><small>較深策略</small></span></label></div></fieldset><button id="startCasual" class="primary-button full" type="button">開始遊戲 →</button></form>
+    </dialog>
+
     <dialog id="onlineSeriesDialog" class="modal">
       <form method="dialog">
         <button class="modal-close" value="cancel" aria-label="關閉">×</button>
@@ -214,13 +238,14 @@
 
     <dialog id="nameDialog" class="modal name-modal">
       <form method="dialog">
-        <span class="eyebrow">PLAYER PROFILE</span><h2>你的棋手名稱</h2><p>其他玩家會在遊戲大廳看到這個名稱。</p>
+        <span class="eyebrow">PLAYER PROFILE</span><h2>你的玩家名稱</h2><p>其他玩家會在房間大廳看到這個名稱。</p>
         <label class="text-field"><span>名稱</span><input id="nameInput" maxlength="16" autocomplete="nickname" placeholder="輸入棋手名稱"></label>
         <button id="saveName" class="primary-button full" value="default" type="button">儲存名稱</button>
       </form>
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=platform-1"></script>
+    <script type="module" src="./src/app.js?v=neighbor-1"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-1"></script>
   </body>
 </html>

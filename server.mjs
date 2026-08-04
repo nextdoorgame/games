@@ -17,6 +17,9 @@ const MAX_CHAT_MESSAGES = 100;
 const players = new Map();
 const invites = new Map();
 const games = new Map();
+const rooms = new Map();
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo"]);
+const ROOM_PLAYER_LIMITS = { gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5] };
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",
@@ -70,6 +73,12 @@ function cleanupLobby() {
   for (const [id, invite] of invites) {
     if (invite.createdAt < inviteCutoff || invite.status === "declined") invites.delete(id);
   }
+  const roomCutoff = Date.now() - 2 * 60 * 60_000;
+  for (const [id, room] of rooms) if (room.updatedAt < roomCutoff) rooms.delete(id);
+}
+
+function publicRoom(room) {
+  return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players, createdAt: room.createdAt, updatedAt: room.updatedAt };
 }
 
 function activeGameFor(playerId) {
@@ -203,6 +212,42 @@ function resetRound(game, restartSeries) {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/rooms") {
+    cleanupLobby();
+    const gameType = ROOM_GAME_TYPES.has(url.searchParams.get("gameType")) ? url.searchParams.get("gameType") : "gomoku";
+    return sendJson(res, 200, { gameType, rooms: [...rooms.values()].filter((room) => room.gameType === gameType).sort((a, b) => b.updatedAt - a.updatedAt).map(publicRoom) });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/rooms") {
+    const body = await readJson(req);
+    const gameType = ROOM_GAME_TYPES.has(body.gameType) ? body.gameType : "gomoku";
+    const allowed = ROOM_PLAYER_LIMITS[gameType];
+    const maxPlayers = allowed.includes(Number(body.maxPlayers)) ? Number(body.maxPlayers) : allowed.at(-1);
+    const hostId = String(body.hostId || "").trim();
+    const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
+    if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], createdAt: Date.now(), updatedAt: Date.now() };
+    rooms.set(room.id, room);
+    return sendJson(res, 201, publicRoom(room));
+  }
+
+  const roomJoinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
+  if (req.method === "POST" && roomJoinMatch) {
+    const room = rooms.get(roomJoinMatch[1]);
+    if (!room) return sendJson(res, 404, { error: "房間已關閉" });
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    const playerName = String(body.playerName || "棋手").trim().slice(0, 16);
+    if (!playerId) return sendJson(res, 400, { error: "缺少玩家資料" });
+    if (!room.players.some((player) => player.id === playerId)) {
+      if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
+      room.players.push({ id: playerId, name: playerName });
+    }
+    room.status = room.players.length >= room.maxPlayers ? "full" : "waiting";
+    room.updatedAt = Date.now();
+    return sendJson(res, 200, publicRoom(room));
+  }
+
   if (req.method === "GET" && url.pathname === "/api/lobby") {
     const playerId = url.searchParams.get("playerId")?.trim();
     const name = url.searchParams.get("name")?.trim().slice(0, 16);
