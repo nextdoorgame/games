@@ -46,6 +46,7 @@ const els = {
   opponentSeriesScore: document.querySelector("#opponentSeriesScore"),
   turnTimer: document.querySelector("#turnTimer"),
   turnTimerLabel: document.querySelector("#turnTimerLabel"),
+  turnTimerHint: document.querySelector("#turnTimerHint"),
   turnCountdown: document.querySelector("#turnCountdown"),
   roundEndIcon: document.querySelector("#roundEndIcon"),
   roundEndTitle: document.querySelector("#roundEndTitle"),
@@ -247,7 +248,7 @@ function renderGamePanel() {
   els.undoMove.hidden = gameMode !== "single";
   els.undoMove.disabled = gameMode !== "single" || game.status !== "playing" || game.moves.length <= (game.playerColor === WHITE ? 1 : 0);
   els.restartGame.hidden = gameMode !== "single";
-  els.turnTimer.hidden = gameMode !== "online";
+  els.turnTimer.hidden = !["single", "online"].includes(gameMode);
   els.onlineChat.hidden = gameMode !== "online";
   renderTurnClock();
 }
@@ -266,7 +267,16 @@ function renderSeriesPanel() {
 }
 
 function renderTurnClock() {
-  if (gameMode !== "online" || !game || !game.turnTimeMs) return;
+  if (!game) return;
+  if (gameMode === "single") {
+    els.turnTimerLabel.textContent = "你的思考時間";
+    els.turnTimerHint.textContent = "單人模式沒有時間限制";
+    els.turnCountdown.textContent = "無限";
+    els.turnTimer.classList.remove("warning");
+    return;
+  }
+  if (gameMode !== "online" || !game.turnTimeMs) return;
+  els.turnTimerHint.textContent = "逾時將自動隨機落子";
   if (game.status !== "playing") {
     els.turnTimerLabel.textContent = "本局已結束";
     els.turnCountdown.textContent = "00:00";
