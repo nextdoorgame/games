@@ -1,4 +1,4 @@
-import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-4";
+import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-6";
 
 function pixelText(ctx, text, x, y, size = 22, align = "left", color = "#fff") {
   ctx.save(); ctx.font = `700 ${size}px monospace`; ctx.textAlign = align; ctx.textBaseline = "middle";
@@ -44,6 +44,12 @@ export function drawVolleyball(canvas, game) {
   drawMouse(ctx, game.players[0], 1, game.ball.x < 400 && Math.abs(game.ball.x - game.players[0].x) < 80); drawMouse(ctx, game.players[1], -1, game.ball.x > 400 && Math.abs(game.ball.x - game.players[1].x) < 80); drawVolleyBall(ctx, game.ball);
   pixelText(ctx, String(game.players[0].score).padStart(2, "0"), 65, 42, 34, "center", "#ffdf48"); pixelText(ctx, String(game.players[1].score).padStart(2, "0"), 735, 42, 34, "center", "#ffdf48");
   pixelText(ctx, "先得 7 分", 400, 34, 16, "center", "#fff8df");
+  if (game.countdown > 0) {
+    const count = Math.max(1, Math.ceil(game.countdown / 60));
+    ctx.fillStyle = "rgba(24,30,26,.42)"; ctx.fillRect(310, 155, 180, 130);
+    pixelText(ctx, String(count), 400, 207, 66, "center", "#ffe369");
+    pixelText(ctx, "準備開始", 400, 265, 16, "center", "#fff");
+  }
   if (game.roundDelay && game.winner === null) pixelText(ctx, "得分！", 400, 115, 30, "center", "#fff3aa");
   if (game.winner !== null) { ctx.fillStyle = "rgba(24,30,26,.72)"; ctx.fillRect(190, 175, 420, 115); pixelText(ctx, `玩家 ${game.winner + 1} 獲勝`, 400, 222, 34, "center", "#ffe369"); pixelText(ctx, "按重新開始再來一局", 400, 264, 15, "center", "#fff"); }
 }

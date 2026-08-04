@@ -7,10 +7,11 @@ export function createVolleyballState() {
   return {
     type: "volleyball",
     players: [{ x: 145, y: 332, vx: 0, vy: 0, score: 0 }, { x: 655, y: 332, vx: 0, vy: 0, score: 0 }],
-    ball: { x: 240, y: 120, vx: 3.7, vy: -2.5 },
+    ball: { x: 240, y: 120, vx: 2.8, vy: -4.8 },
     winner: null,
     serving: 0,
     roundDelay: 0,
+    countdown: 180,
     frame: 0
   };
 }
@@ -19,19 +20,21 @@ function resetVolleyRound(game, serving) {
   game.serving = serving;
   game.players[0].x = 145; game.players[0].y = 332; game.players[0].vx = 0; game.players[0].vy = 0;
   game.players[1].x = 655; game.players[1].y = 332; game.players[1].vx = 0; game.players[1].vy = 0;
-  game.ball = { x: serving === 0 ? 230 : 570, y: 120, vx: serving === 0 ? 3.8 : -3.8, vy: -3 };
+  game.ball = { x: serving === 0 ? 230 : 570, y: 120, vx: serving === 0 ? 3 : -3, vy: -5.2 };
   game.roundDelay = 0;
 }
 
 function volleyAi(game) {
+  if (game.frame % 18 !== 0 && game.aiInput) return game.aiInput;
   const ball = game.ball, player = game.players[1];
-  const target = ball.x > 405 ? clamp(ball.x + ball.vx * 8, 445, 750) : 625;
-  return {
+  const target = ball.x > 405 ? clamp(ball.x + ball.vx * 5, 455, 745) : 635;
+  game.aiInput = {
     left: player.x > target + 10,
     right: player.x < target - 10,
-    up: ball.x > 410 && Math.abs(ball.x - player.x) < 92 && ball.y < 325,
-    action: Math.abs(ball.x - player.x) < 72 && ball.y < player.y + 20
+    up: ball.x > 420 && Math.abs(ball.x - player.x) < 70 && ball.y > 205 && ball.y < 325,
+    action: Math.abs(ball.x - player.x) < 58 && ball.y < player.y + 12
   };
+  return game.aiInput;
 }
 
 function updateVolleyPlayer(game, index, input) {
@@ -50,9 +53,9 @@ function collideVolleyPlayer(game, index, input) {
   const dx = ball.x - px, dy = ball.y - py;
   const distance = Math.hypot(dx, dy);
   if (distance >= 55 || distance === 0) return;
-  const strength = input.action ? 8.7 : 6.6;
+  const strength = input.action ? 7.6 : 6.1;
   ball.vx = dx / distance * strength + player.vx * .35;
-  ball.vy = Math.min(-3.3, dy / distance * strength - (input.action ? 2.4 : 0));
+  ball.vy = Math.min(-4.6, dy / distance * strength - (input.action ? 2.8 : .8));
   ball.x = px + dx / distance * 56;
   ball.y = py + dy / distance * 56;
 }
@@ -60,6 +63,7 @@ function collideVolleyPlayer(game, index, input) {
 export function updateVolleyball(game, firstInput, secondInput, useAi = false) {
   if (game.winner !== null) return game;
   game.frame += 1;
+  if (game.countdown > 0) { game.countdown -= 1; return game; }
   if (game.roundDelay) {
     game.roundDelay -= 1;
     if (game.roundDelay <= 0) resetVolleyRound(game, game.serving);
@@ -67,13 +71,13 @@ export function updateVolleyball(game, firstInput, secondInput, useAi = false) {
   }
   const inputs = [firstInput || {}, useAi ? volleyAi(game) : secondInput || {}];
   updateVolleyPlayer(game, 0, inputs[0]); updateVolleyPlayer(game, 1, inputs[1]);
-  game.ball.vy += .31; game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
-  if (game.ball.x < 20 || game.ball.x > 780) { game.ball.x = clamp(game.ball.x, 20, 780); game.ball.vx *= -.9; }
+  game.ball.vy += .24; game.ball.x += game.ball.vx; game.ball.y += game.ball.vy;
+  if (game.ball.x < 20 || game.ball.x > 780) { game.ball.x = clamp(game.ball.x, 20, 780); game.ball.vx *= -.92; }
   if (game.ball.y < 18) { game.ball.y = 18; game.ball.vy = Math.abs(game.ball.vy); }
   const nearNet = Math.abs(game.ball.x - 400) < 15 && game.ball.y > 215;
   if (nearNet) {
     game.ball.x = game.ball.x < 400 ? 384 : 416;
-    game.ball.vx = (game.ball.x < 400 ? -1 : 1) * Math.max(3, Math.abs(game.ball.vx));
+    game.ball.vx = (game.ball.x < 400 ? -1 : 1) * Math.max(2.5, Math.abs(game.ball.vx));
   }
   collideVolleyPlayer(game, 0, inputs[0]); collideVolleyPlayer(game, 1, inputs[1]);
   if (game.ball.y >= 390) {

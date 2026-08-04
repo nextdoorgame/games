@@ -159,6 +159,7 @@
             <section class="room-table panel"><div class="room-table-head"><span>房間名稱</span><span>人數</span><span>模式</span><span>狀態</span><span></span></div><div id="roomList"></div></section>
             <aside class="create-room panel"><h2>建立房間</h2><label><span>房間名稱</span><input id="roomNameInput" maxlength="16" placeholder="例如：隔壁 101"></label><label><span>遊戲人數</span><select id="roomPlayerCount"></select></label><label class="ai-fill-row"><input id="roomAiFill" type="checkbox" checked><span>空位由 AI 補上</span></label><button id="createRoom" class="primary-button" type="button">建立房間</button><p>房間依遊戲分類，其他遊戲的玩家不會混入。</p></aside>
           </div>
+          <section class="online-roster panel"><div><strong>目前在線</strong><span>所有遊戲共用同一份在線狀態</span></div><div id="roomOnlinePlayers">等待玩家上線…</div></section>
           <div id="duelInviteLobby" class="lobby-layout">
             <section class="player-panel panel">
               <div class="panel-heading"><div><h2>在線玩家</h2><p>對方即使停留在遊戲首頁，也能收到邀請。</p></div><button id="refreshLobby" class="text-button" type="button">更新名單</button></div>
@@ -300,7 +301,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-5"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-5"></script>
+    <script type="module" src="./src/app.js?v=neighbor-7"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-7"></script>
   </body>
 </html>

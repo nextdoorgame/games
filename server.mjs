@@ -85,7 +85,7 @@ function cleanupLobby() {
 }
 
 function publicRoom(room) {
-  return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players, createdAt: room.createdAt, updatedAt: room.updatedAt };
+  return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players, gameId: room.gameId || null, createdAt: room.createdAt, updatedAt: room.updatedAt };
 }
 
 function safeTetrisSnapshot(value) {
@@ -118,6 +118,40 @@ function activeGameFor(playerId) {
   return [...games.values()]
     .filter((game) => game.matchStatus === "active" && game.players.some((player) => player.id === playerId))
     .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+}
+
+function createOnlineMatch({ gameType = "gomoku", playerOne, playerTwo, playerOneColor = BLACK, bestOf = 3, turnTimeMinutes = 3 }) {
+  const normalizedBestOf = bestOf === 5 ? 5 : 3;
+  const game = {
+    id: randomUUID(),
+    gameType: gameType === "xiangqi" ? "xiangqi" : "gomoku",
+    board: initialBoard(gameType),
+    moves: [],
+    players: [
+      { id: playerOne.id, name: playerOne.name, color: playerOneColor },
+      { id: playerTwo.id, name: playerTwo.name, color: playerOneColor === BLACK ? WHITE : BLACK }
+    ],
+    turn: BLACK,
+    status: "playing",
+    winner: 0,
+    winLine: [],
+    bestOf: normalizedBestOf,
+    targetWins: normalizedBestOf === 5 ? 3 : 2,
+    round: 1,
+    scores: { [playerOne.id]: 0, [playerTwo.id]: 0 },
+    seriesWinnerId: null,
+    rematchRequests: [],
+    matchStatus: "active",
+    rematchDeclinedBy: null,
+    messages: [],
+    turnTimeMinutes,
+    turnTimeMs: turnTimeMinutes * 60_000,
+    turnStartedAt: Date.now(),
+    revision: 0,
+    updatedAt: Date.now()
+  };
+  games.set(game.id, game);
+  return game;
 }
 
 function winningLine(board, index, color) {
@@ -259,7 +293,8 @@ async function handleApi(req, res, url) {
     const hostId = String(body.hostId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
+    const aiFill = Boolean(body.aiFill);
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: aiFill ? "ready" : "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
   }
@@ -276,7 +311,11 @@ async function handleApi(req, res, url) {
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
       room.players.push({ id: playerId, name: playerName });
     }
-    room.status = room.players.length >= room.maxPlayers ? "full" : "waiting";
+    if (["gomoku", "xiangqi"].includes(room.gameType) && room.players.length === 2 && !room.gameId) {
+      const game = createOnlineMatch({ gameType: room.gameType, playerOne: room.players[0], playerTwo: room.players[1] });
+      room.gameId = game.id;
+      room.status = "playing";
+    } else room.status = room.players.length >= room.maxPlayers ? "full" : room.aiFill ? "ready" : "waiting";
     room.updatedAt = Date.now();
     return sendJson(res, 200, publicRoom(room));
   }
@@ -366,36 +405,14 @@ async function handleApi(req, res, url) {
     const from = players.get(invite.fromId);
     const to = players.get(invite.toId);
     if (!from || !to) return sendJson(res, 404, { error: "其中一位玩家已離線" });
-    const inviterIsBlack = invite.inviterColor !== WHITE;
-    const game = {
-      id: randomUUID(),
-      gameType: invite.gameType === "xiangqi" ? "xiangqi" : "gomoku",
-      board: initialBoard(invite.gameType),
-      moves: [],
-      players: [
-        { id: from.id, name: from.name, color: inviterIsBlack ? BLACK : WHITE },
-        { id: to.id, name: to.name, color: inviterIsBlack ? WHITE : BLACK }
-      ],
-      turn: BLACK,
-      status: "playing",
-      winner: 0,
-      winLine: [],
-      bestOf: invite.bestOf === 5 ? 5 : 3,
-      targetWins: invite.bestOf === 5 ? 3 : 2,
-      round: 1,
-      scores: { [from.id]: 0, [to.id]: 0 },
-      seriesWinnerId: null,
-      rematchRequests: [],
-      matchStatus: "active",
-      rematchDeclinedBy: null,
-      messages: [],
-      turnTimeMinutes: invite.turnTimeMinutes || 3,
-      turnTimeMs: (invite.turnTimeMinutes || 3) * 60_000,
-      turnStartedAt: Date.now(),
-      revision: 0,
-      updatedAt: Date.now()
-    };
-    games.set(game.id, game);
+    const game = createOnlineMatch({
+      gameType: invite.gameType,
+      playerOne: from,
+      playerTwo: to,
+      playerOneColor: invite.inviterColor !== WHITE ? BLACK : WHITE,
+      bestOf: invite.bestOf,
+      turnTimeMinutes: invite.turnTimeMinutes || 3
+    });
     invite.status = "accepted";
     invite.gameId = game.id;
     return sendJson(res, 201, { accepted: true, gameId: game.id });

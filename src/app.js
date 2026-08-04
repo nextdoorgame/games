@@ -1,4 +1,5 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
+import { playerId } from "./player-identity.js?v=neighbor-7";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
 
@@ -78,8 +79,6 @@ const els = {
   recordList: document.querySelector("#recordList")
 };
 
-const playerId = sessionStorage.getItem("gomoku-player-id") || crypto.randomUUID();
-sessionStorage.setItem("gomoku-player-id", playerId);
 let playerName = localStorage.getItem("gomoku-player-name") || `棋手 ${String(Math.floor(Math.random() * 9000) + 1000)}`;
 
 let activeView = "home";
@@ -657,6 +656,7 @@ async function fetchLobby() {
     els.onlineCount.textContent = String(data.onlineCount);
     els.lobbyCount.textContent = String(Math.max(0, data.onlineCount - 1));
     renderPlayers(data.players);
+    window.dispatchEvent(new CustomEvent("neighbor-online-players", { detail: data.players }));
     pendingInvites = new Set(data.outgoingInvites.map((invite) => invite.toId));
     if (data.activeGame && gameMode !== "online") {
       await startOnlineGame(data.activeGame);
@@ -1065,3 +1065,4 @@ document.addEventListener("visibilitychange", () => {
 updateIdentity();
 updateHostingStatus();
 showView("home");
+window.GOMOKU_ONLINE = { startGame: startOnlineGame };
