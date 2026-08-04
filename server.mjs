@@ -18,10 +18,10 @@ const players = new Map();
 const invites = new Map();
 const games = new Map();
 const rooms = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine"]);
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris"]);
 const ROOM_PLAYER_LIMITS = {
   gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
-  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5]
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2]
 };
 
 const contentTypes = {
@@ -82,6 +82,20 @@ function cleanupLobby() {
 
 function publicRoom(room) {
   return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players, createdAt: room.createdAt, updatedAt: room.updatedAt };
+}
+
+function safeTetrisSnapshot(value) {
+  if (!value || !Array.isArray(value.board) || value.board.length !== 20) return null;
+  const board = value.board.map((row) => Array.isArray(row) && row.length === 10 ? row.map((cell) => Math.max(0, Math.min(7, Number(cell) || 0))) : null);
+  if (board.some((row) => !row)) return null;
+  return {
+    board,
+    score: Math.max(0, Math.min(10_000_000, Number(value.score) || 0)),
+    lines: Math.max(0, Math.min(100_000, Number(value.lines) || 0)),
+    gameOver: Boolean(value.gameOver),
+    paused: Boolean(value.paused),
+    updatedAt: Date.now()
+  };
 }
 
 function activeGameFor(playerId) {
@@ -229,7 +243,7 @@ async function handleApi(req, res, url) {
     const hostId = String(body.hostId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], createdAt: Date.now(), updatedAt: Date.now() };
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
   }
@@ -249,6 +263,21 @@ async function handleApi(req, res, url) {
     room.status = room.players.length >= room.maxPlayers ? "full" : "waiting";
     room.updatedAt = Date.now();
     return sendJson(res, 200, publicRoom(room));
+  }
+
+  const tetrisRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/tetris$/);
+  if (req.method === "POST" && tetrisRoomMatch) {
+    const room = rooms.get(tetrisRoomMatch[1]);
+    if (!room || room.gameType !== "tetris") return sendJson(res, 404, { error: "俄羅斯方塊房間已關閉" });
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
+    const snapshot = safeTetrisSnapshot(body.state);
+    if (!snapshot) return sendJson(res, 400, { error: "棋盤資料格式不正確" });
+    room.snapshots ||= new Map();
+    room.snapshots.set(playerId, snapshot);
+    room.updatedAt = Date.now();
+    return sendJson(res, 200, { room: publicRoom(room), snapshots: [...room.snapshots.entries()].map(([id, state]) => ({ playerId: id, state })) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/lobby") {
