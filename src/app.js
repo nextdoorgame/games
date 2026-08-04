@@ -44,6 +44,9 @@ const els = {
   roundLabel: document.querySelector("#roundLabel"),
   mySeriesScore: document.querySelector("#mySeriesScore"),
   opponentSeriesScore: document.querySelector("#opponentSeriesScore"),
+  turnTimer: document.querySelector("#turnTimer"),
+  turnTimerLabel: document.querySelector("#turnTimerLabel"),
+  turnCountdown: document.querySelector("#turnCountdown"),
   roundEndIcon: document.querySelector("#roundEndIcon"),
   roundEndTitle: document.querySelector("#roundEndTitle"),
   roundEndMessage: document.querySelector("#roundEndMessage"),
@@ -55,6 +58,11 @@ const els = {
   endSeries: document.querySelector("#endSeries"),
   continueSeries: document.querySelector("#continueSeries"),
   gameStatus: document.querySelector("#gameStatus"),
+  onlineChat: document.querySelector("#onlineChat"),
+  chatMessages: document.querySelector("#chatMessages"),
+  chatForm: document.querySelector("#chatForm"),
+  chatInput: document.querySelector("#chatInput"),
+  sendChat: document.querySelector("#sendChat"),
   undoMove: document.querySelector("#undoMove"),
   restartGame: document.querySelector("#restartGame"),
   recordList: document.querySelector("#recordList")
@@ -72,6 +80,7 @@ let aiWorker = null;
 let aiRequest = 0;
 let lobbyTimer = null;
 let onlineTimer = null;
+let onlineClockTimer = null;
 let currentInvite = null;
 let pendingInvitePlayer = null;
 let pendingInviteButton = null;
@@ -83,6 +92,8 @@ let recordedGameKey = "";
 let series = null;
 let roundDialogKey = "";
 let onlineMatchClosedHandled = false;
+let renderedChatKey = "";
+let lastAutomaticMoveKey = "";
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -236,6 +247,9 @@ function renderGamePanel() {
   els.undoMove.hidden = gameMode !== "single";
   els.undoMove.disabled = gameMode !== "single" || game.status !== "playing" || game.moves.length <= (game.playerColor === WHITE ? 1 : 0);
   els.restartGame.hidden = gameMode !== "single";
+  els.turnTimer.hidden = gameMode !== "online";
+  els.onlineChat.hidden = gameMode !== "online";
+  renderTurnClock();
 }
 
 function renderSeriesPanel() {
@@ -249,6 +263,48 @@ function renderSeriesPanel() {
   els.roundLabel.textContent = `第 ${round} 局・每局交換黑白`;
   els.mySeriesScore.textContent = String(myScore);
   els.opponentSeriesScore.textContent = String(opponentScore);
+}
+
+function renderTurnClock() {
+  if (gameMode !== "online" || !game || !game.turnTimeMs) return;
+  if (game.status !== "playing") {
+    els.turnTimerLabel.textContent = "本局已結束";
+    els.turnCountdown.textContent = "00:00";
+    els.turnTimer.classList.remove("warning");
+    return;
+  }
+  const turnPlayer = game.players?.find((player) => player.color === game.turn);
+  const serverNow = Date.now() + (game.clockOffsetMs || 0);
+  const remainingMs = Math.max(0, game.turnStartedAt + game.turnTimeMs - serverNow);
+  const remainingSeconds = Math.ceil(remainingMs / 1000);
+  const minutes = Math.floor(remainingSeconds / 60);
+  const seconds = remainingSeconds % 60;
+  els.turnTimerLabel.textContent = turnPlayer?.id === playerId ? "你的下棋時間" : `${turnPlayer?.name || "對手"}的下棋時間`;
+  els.turnCountdown.textContent = `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  els.turnTimer.classList.toggle("warning", remainingSeconds <= 15);
+}
+
+function renderOnlineChat(messages = []) {
+  const latestId = messages.at(-1)?.id || "empty";
+  const key = `${messages.length}:${latestId}`;
+  if (key === renderedChatKey) return;
+  renderedChatKey = key;
+  if (!messages.length) {
+    els.chatMessages.innerHTML = `<p class="chat-empty">還沒有訊息，打聲招呼吧！</p>`;
+    return;
+  }
+  els.chatMessages.replaceChildren(...messages.map((message) => {
+    const item = document.createElement("article");
+    item.className = `chat-message${message.playerId === playerId ? " mine" : ""}`;
+    const meta = document.createElement("small");
+    const time = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit" }).format(new Date(message.createdAt));
+    meta.textContent = `${message.playerId === playerId ? "你" : message.name}・${time}`;
+    const copy = document.createElement("p");
+    copy.textContent = message.text;
+    item.append(meta, copy);
+    return item;
+  }));
+  els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 
 function getWinningLine(board, index, color) {
@@ -308,7 +364,7 @@ function scheduleAiMove() {
     if (gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor) return;
     const expectedMoveCount = game.moves.length;
     const difficulty = game.difficulty;
-    const thinkLabels = { easy: "0.5 秒", medium: "1.5 秒", hard: "3.5 秒全力" };
+    const thinkLabels = { easy: "4 秒", medium: "8 秒", hard: "15 秒全力" };
     els.gameStatus.textContent = `Rapfi 正在進行 ${thinkLabels[difficulty]}搜尋…`;
 
     const finishMove = (index) => {
@@ -334,12 +390,7 @@ function scheduleAiMove() {
       worker.terminate();
       if (aiWorker === worker) aiWorker = null;
       if (requestId !== aiRequest || !game) return;
-      const fallback = chooseAiMove([...game.board], game.aiColor, game.playerColor, difficulty, {
-        tacticalDepth: 5,
-        positionalDepth: 3,
-        timeMs: 350,
-        limits: [8, 5, 3]
-      });
+      const fallback = chooseAiMove([...game.board], game.aiColor, game.playerColor, difficulty);
       finishMove(fallback);
     }, { once: true });
     worker.postMessage({ board: [...game.board], aiColor: game.aiColor, humanColor: game.playerColor, difficulty });
@@ -436,7 +487,7 @@ async function fetchLobby() {
       els.inviterName.textContent = currentInvite.fromName;
       const inviterIsBlack = currentInvite.inviterColor !== WHITE;
       const firstRoundLabel = inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手";
-      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每局交換黑白`;
+      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘・每局交換黑白`;
       els.inviteDialog.showModal();
     }
   } catch (error) {
@@ -478,15 +529,15 @@ function prepareOnlineInvite(player, button) {
   els.onlineSeriesDialog.showModal();
 }
 
-async function sendInvite(player, button, bestOf, inviterColor) {
+async function sendInvite(player, button, bestOf, inviterColor, turnTimeMinutes) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf, inviterColor }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf, inviterColor, turnTimeMinutes }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
-    showToast(`已邀請 ${player.name}；第一局你${inviterColor === "white" ? "後手" : "先手"}`);
+    showToast(`已邀請 ${player.name}；每步 ${turnTimeMinutes} 分鐘`);
   } catch (error) {
     button.disabled = false;
     button.textContent = "邀請對戰";
@@ -517,11 +568,15 @@ async function startOnlineGame(gameId) {
   els.undoMove.hidden = true;
   els.restartGame.hidden = true;
   onlineMatchClosedHandled = false;
+  renderedChatKey = "";
+  lastAutomaticMoveKey = "";
   roundDialogKey = "";
   showView("game");
   await fetchOnlineGame(gameId);
   window.clearInterval(onlineTimer);
   onlineTimer = window.setInterval(() => fetchOnlineGame(gameId), 800);
+  window.clearInterval(onlineClockTimer);
+  onlineClockTimer = window.setInterval(renderTurnClock, 250);
 }
 
 async function fetchOnlineGame(gameId) {
@@ -540,6 +595,7 @@ async function fetchOnlineGame(gameId) {
 
 function applyOnlineGameData(data) {
   if (!shouldApplyOnlineSnapshot(gameMode === "online" ? game : null, data)) return false;
+  const previousMoveCount = gameMode === "online" ? game?.moves?.length || 0 : 0;
   const me = data.players.find((player) => player.id === playerId);
   const opponent = data.players.find((player) => player.id !== playerId);
   game = {
@@ -547,10 +603,18 @@ function applyOnlineGameData(data) {
     myColor: me.color,
     board: data.board,
     moves: data.moves,
-    winLine: data.winLine || []
+    winLine: data.winLine || [],
+    clockOffsetMs: Number(data.serverTime) - Date.now()
   };
   els.opponentName.textContent = opponent.name;
+  renderOnlineChat(data.messages || []);
   renderBoard();
+  const latestMove = game.moves.at(-1);
+  const automaticKey = latestMove?.automatic ? `${game.round}:${game.moves.length}:${latestMove.index}` : "";
+  if (game.moves.length > previousMoveCount && automaticKey && automaticKey !== lastAutomaticMoveKey) {
+    lastAutomaticMoveKey = automaticKey;
+    showToast(`${latestMove.color === game.myColor ? "你" : "對手"}逾時，系統已隨機落子`);
+  }
 
   if (game.status === "playing") {
     roundDialogKey = "";
@@ -580,6 +644,25 @@ async function makeOnlineMove(index) {
     applyOnlineGameData(data);
   } catch (error) {
     showToast(error.message);
+    fetchOnlineGame(game.id);
+  }
+}
+
+async function sendChatMessage(event) {
+  event.preventDefault();
+  if (gameMode !== "online" || !game?.id) return;
+  const text = els.chatInput.value.trim();
+  if (!text) return;
+  els.sendChat.disabled = true;
+  try {
+    const data = await api(`/api/game/${encodeURIComponent(game.id)}/chat`, { method: "POST", body: JSON.stringify({ playerId, text }) });
+    els.chatInput.value = "";
+    applyOnlineGameData(data);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    els.sendChat.disabled = false;
+    els.chatInput.focus();
   }
 }
 
@@ -653,6 +736,7 @@ async function endCurrentSeries() {
   }
   cancelAiMove();
   window.clearInterval(onlineTimer);
+  window.clearInterval(onlineClockTimer);
   const destination = gameMode === "online" ? "lobby" : "home";
   gameMode = null;
   game = null;
@@ -663,6 +747,7 @@ async function endCurrentSeries() {
 async function leaveCurrentGame() {
   cancelAiMove();
   window.clearInterval(onlineTimer);
+  window.clearInterval(onlineClockTimer);
   if (gameMode === "online" && game?.status === "playing") {
     try {
       await api(`/api/game/${encodeURIComponent(game.id)}/resign`, { method: "POST", body: JSON.stringify({ playerId }) });
@@ -736,7 +821,8 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   const data = new FormData(els.onlineSeriesDialog.querySelector("form"));
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
-  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf, inviterColor);
+  const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
+  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf, inviterColor, turnTimeMinutes);
 });
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {
@@ -754,12 +840,13 @@ document.querySelector("#declineInvite").addEventListener("click", () => respond
 document.querySelector("#leaveGame").addEventListener("click", leaveCurrentGame);
 els.refreshLobby.addEventListener("click", fetchLobby);
 els.board.addEventListener("click", handleBoardClick);
+els.chatForm.addEventListener("submit", sendChatMessage);
 els.undoMove.addEventListener("click", undoSingleMove);
 els.restartGame.addEventListener("click", restartSingle);
 els.continueSeries.addEventListener("click", continueCurrentSeries);
 els.endSeries.addEventListener("click", endCurrentSeries);
 els.roundEndDialog.addEventListener("cancel", (event) => event.preventDefault());
-window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); });
+window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); window.clearInterval(onlineClockTimer); });
 
 updateIdentity();
 updateHostingStatus();

@@ -3,9 +3,9 @@ const RAPFI_BASE = new URL("../vendor/rapfi/", self.location.href).href;
 const RAPFI_SCRIPT = new URL("rapfi-single-simd128.js", RAPFI_BASE).href;
 
 const LEVELS = {
-  easy: { timeMs: 500, maxDepth: 24 },
-  medium: { timeMs: 1500, maxDepth: 48 },
-  hard: { timeMs: 3500, maxDepth: 100 }
+  easy: { timeMs: 4000, maxDepth: 80 },
+  medium: { timeMs: 8000, maxDepth: 120 },
+  hard: { timeMs: 15000, maxDepth: 160 }
 };
 
 let rapfiPromise = null;
@@ -76,8 +76,8 @@ async function searchWithRapfi(board, difficulty) {
   engine.sendCommand("RELOADCONFIG config.toml");
   engine.sendCommand("INFO RULE 0");
   engine.sendCommand("INFO THREAD_NUM 1");
-  engine.sendCommand("INFO HASH_SIZE 32768");
-  engine.sendCommand("INFO CAUTION_FACTOR 3");
+  engine.sendCommand("INFO HASH_SIZE 65536");
+  engine.sendCommand("INFO CAUTION_FACTOR 4");
   engine.sendCommand("INFO STRENGTH 100");
   engine.sendCommand(`INFO TIMEOUT_TURN ${level.timeMs}`);
   engine.sendCommand("INFO TIMEOUT_MATCH 9999999");

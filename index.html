@@ -136,7 +136,15 @@
                 <strong><span id="mySeriesScore">0</span><i>:</i><span id="opponentSeriesScore">0</span></strong>
               </div>
               <div class="move-info"><span>目前手數</span><strong id="moveCount">0</strong></div>
+              <div id="turnTimer" class="turn-timer" hidden aria-live="polite">
+                <div><span id="turnTimerLabel">你的下棋時間</span><small>逾時將自動隨機落子</small></div><strong id="turnCountdown">03:00</strong>
+              </div>
               <p id="gameStatus" class="game-status">黑棋先行，請選擇交叉點落子。</p>
+              <section id="onlineChat" class="online-chat" hidden aria-label="對戰聊天室">
+                <div class="chat-heading"><div><span>對戰聊天室</span><small>最多 200 字</small></div><i aria-hidden="true">●</i></div>
+                <div id="chatMessages" class="chat-messages" aria-live="polite"><p class="chat-empty">還沒有訊息，打聲招呼吧！</p></div>
+                <form id="chatForm" class="chat-form"><input id="chatInput" maxlength="200" autocomplete="off" placeholder="輸入訊息…" aria-label="聊天訊息"><button id="sendChat" type="submit">傳送</button></form>
+              </section>
               <div class="game-actions">
                 <button id="undoMove" type="button">↶ 回到上一步</button>
                 <button id="restartGame" type="button">↻ 重新開始</button>
@@ -157,9 +165,9 @@
         <button class="modal-close" value="cancel" aria-label="關閉">×</button>
         <span class="eyebrow">SINGLE PLAYER</span><h2>設定你的挑戰</h2><p>選擇 AI 強度、系列賽制與第一局執棋顏色，之後每局會交換黑白。</p>
         <fieldset><legend>AI 難度</legend><div class="choice-grid difficulty-grid">
-          <label><input type="radio" name="difficulty" value="easy"><span><b>初級</b><small>Rapfi 搜尋 0.5 秒</small></span></label>
-          <label><input type="radio" name="difficulty" value="medium" checked><span><b>進階</b><small>Rapfi 搜尋 1.5 秒</small></span></label>
-          <label><input type="radio" name="difficulty" value="hard"><span><b>困難</b><small>Rapfi 全力 3.5 秒</small></span></label>
+          <label><input type="radio" name="difficulty" value="easy"><span><b>初級</b><small>Mix9sVQ 搜尋 4 秒</small></span></label>
+          <label><input type="radio" name="difficulty" value="medium" checked><span><b>進階</b><small>Mix9sVQ 搜尋 8 秒</small></span></label>
+          <label><input type="radio" name="difficulty" value="hard"><span><b>困難</b><small>Mix9sVQ 全力 15 秒</small></span></label>
         </div></fieldset>
         <p class="engine-note">AI 引擎採用 <a href="https://github.com/dhbloo/rapfi" target="_blank" rel="noreferrer">Rapfi WebAssembly</a>，依 GPLv3 授權。</p>
         <fieldset><legend>系列賽制</legend><div class="choice-grid series-grid">
@@ -186,13 +194,20 @@
           <label><input type="radio" name="inviterColor" value="black" checked><span><i class="mini-stone black-stone"></i>我先手</span></label>
           <label><input type="radio" name="inviterColor" value="white"><span><i class="mini-stone white-stone"></i>我後手</span></label>
         </div></fieldset>
+        <fieldset><legend>每步思考時間</legend><div class="choice-grid time-grid">
+          <label><input type="radio" name="turnTimeMinutes" value="1"><span><b>1 分鐘</b><small>快速對局</small></span></label>
+          <label><input type="radio" name="turnTimeMinutes" value="3" checked><span><b>3 分鐘</b><small>標準時間</small></span></label>
+          <label><input type="radio" name="turnTimeMinutes" value="5"><span><b>5 分鐘</b><small>充分思考</small></span></label>
+          <label><input type="radio" name="turnTimeMinutes" value="10"><span><b>10 分鐘</b><small>長考對局</small></span></label>
+        </div></fieldset>
+        <p>時間用完仍未落子時，伺服器會從空位隨機替該玩家下一步。</p>
         <button id="confirmOnlineInvite" class="primary-button full" value="default" type="button">送出對戰邀請 →</button>
       </form>
     </dialog>
 
     <dialog id="inviteDialog" class="modal invite-modal">
       <form method="dialog">
-        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一五子棋對戰。<br><span id="inviterSeriesLabel">三戰兩勝・每局交換黑白</span></p>
+        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一五子棋對戰。<br><span id="inviterSeriesLabel">三戰兩勝・每步 3 分鐘・每局交換黑白</span></p>
         <div class="invite-actions"><button id="declineInvite" value="cancel" type="button">婉拒</button><button id="acceptInvite" class="primary-button" value="default" type="button">接受對戰</button></div>
       </form>
     </dialog>

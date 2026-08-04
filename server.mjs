@@ -9,6 +9,9 @@ const BOARD_SIZE = 15;
 const BLACK = 1;
 const WHITE = 2;
 const PLAYER_TTL = 10_000;
+const TURN_TIME_OPTIONS = new Set([1, 3, 5, 10]);
+const MAX_CHAT_LENGTH = 200;
+const MAX_CHAT_MESSAGES = 100;
 
 const players = new Map();
 const invites = new Map();
@@ -92,6 +95,39 @@ function winningLine(board, index, color) {
   return [];
 }
 
+function applyGameMove(game, index, color, { automatic = false, now = Date.now() } = {}) {
+  game.board[index] = color;
+  game.moves.push({ index, color, automatic });
+  game.winLine = winningLine(game.board, index, color);
+  if (game.winLine.length) {
+    game.status = "finished";
+    game.winner = color;
+    const winner = game.players.find((player) => player.color === color);
+    if (winner) {
+      game.scores[winner.id] += 1;
+      if (game.scores[winner.id] >= game.targetWins) game.seriesWinnerId = winner.id;
+    }
+  } else if (game.moves.length === BOARD_SIZE * BOARD_SIZE) {
+    game.status = "finished";
+  } else {
+    game.turn = color === BLACK ? WHITE : BLACK;
+  }
+  game.revision += 1;
+  game.updatedAt = now;
+  game.turnStartedAt = game.status === "playing" ? now : null;
+}
+
+export function applyExpiredTurn(game, now = Date.now(), random = Math.random) {
+  if (game.status !== "playing" || !game.turnTimeMs || !game.turnStartedAt) return false;
+  if (now < game.turnStartedAt + game.turnTimeMs) return false;
+  const emptyIndexes = [];
+  game.board.forEach((stone, index) => { if (!stone) emptyIndexes.push(index); });
+  if (!emptyIndexes.length) return false;
+  const randomIndex = Math.min(emptyIndexes.length - 1, Math.floor(random() * emptyIndexes.length));
+  applyGameMove(game, emptyIndexes[randomIndex], game.turn, { automatic: true, now });
+  return true;
+}
+
 function publicGame(game) {
   return {
     id: game.id,
@@ -110,8 +146,13 @@ function publicGame(game) {
     rematchRequests: game.rematchRequests,
     matchStatus: game.matchStatus,
     rematchDeclinedBy: game.rematchDeclinedBy,
+    messages: game.messages,
+    turnTimeMinutes: game.turnTimeMinutes,
+    turnTimeMs: game.turnTimeMs,
+    turnStartedAt: game.turnStartedAt,
     revision: game.revision,
-    updatedAt: game.updatedAt
+    updatedAt: game.updatedAt,
+    serverTime: Date.now()
   };
 }
 
@@ -136,6 +177,7 @@ function resetRound(game, restartSeries) {
   game.rematchDeclinedBy = null;
   game.revision += 1;
   game.updatedAt = Date.now();
+  game.turnStartedAt = game.updatedAt;
 }
 
 async function handleApi(req, res, url) {
@@ -161,6 +203,7 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const bestOf = Number(body.bestOf) === 5 ? 5 : 3;
     const inviterColor = body.inviterColor === "white" ? WHITE : BLACK;
+    const turnTimeMinutes = TURN_TIME_OPTIONS.has(Number(body.turnTimeMinutes)) ? Number(body.turnTimeMinutes) : 3;
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
@@ -168,7 +211,7 @@ async function handleApi(req, res, url) {
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
     const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, inviterColor, status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, inviterColor, turnTimeMinutes, status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
@@ -206,6 +249,10 @@ async function handleApi(req, res, url) {
       rematchRequests: [],
       matchStatus: "active",
       rematchDeclinedBy: null,
+      messages: [],
+      turnTimeMinutes: invite.turnTimeMinutes || 3,
+      turnTimeMs: (invite.turnTimeMinutes || 3) * 60_000,
+      turnStartedAt: Date.now(),
       revision: 0,
       updatedAt: Date.now()
     };
@@ -221,6 +268,7 @@ async function handleApi(req, res, url) {
     const playerId = url.searchParams.get("playerId");
     if (!game) return sendJson(res, 404, { error: "找不到這場對局" });
     if (!game.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這場對局中" });
+    applyExpiredTurn(game);
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -232,25 +280,30 @@ async function handleApi(req, res, url) {
     const player = game.players.find((item) => item.id === body.playerId);
     const index = Number(body.index);
     if (!player) return sendJson(res, 403, { error: "你不在這場對局中" });
+    const timedOut = applyExpiredTurn(game);
+    if (timedOut) return sendJson(res, 409, { error: "下棋時間已到，系統已自動替你落子" });
     if (game.status !== "playing") return sendJson(res, 409, { error: "這場對局已經結束" });
     if (player.color !== game.turn) return sendJson(res, 409, { error: "還沒輪到你" });
     if (!Number.isInteger(index) || index < 0 || index >= BOARD_SIZE * BOARD_SIZE || game.board[index]) return sendJson(res, 400, { error: "這個位置不能落子" });
-    game.board[index] = player.color;
-    game.moves.push({ index, color: player.color });
-    game.winLine = winningLine(game.board, index, player.color);
-    if (game.winLine.length) {
-      game.status = "finished";
-      game.winner = player.color;
-      game.scores[player.id] += 1;
-      if (game.scores[player.id] >= game.targetWins) game.seriesWinnerId = player.id;
-    } else if (game.moves.length === BOARD_SIZE * BOARD_SIZE) {
-      game.status = "finished";
-    } else {
-      game.turn = player.color === BLACK ? WHITE : BLACK;
-    }
+    applyGameMove(game, index, player.color);
+    return sendJson(res, 200, publicGame(game));
+  }
+
+  const chatMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/chat$/);
+  if (req.method === "POST" && chatMatch) {
+    const game = games.get(chatMatch[1]);
+    if (!game) return sendJson(res, 404, { error: "找不到這場對局" });
+    const body = await readJson(req);
+    const player = game.players.find((item) => item.id === body.playerId);
+    const text = String(body.text || "").trim().slice(0, MAX_CHAT_LENGTH);
+    if (!player) return sendJson(res, 403, { error: "你不在這場對局中" });
+    if (game.matchStatus !== "active") return sendJson(res, 409, { error: "這場對戰已經結束" });
+    if (!text) return sendJson(res, 400, { error: "請輸入訊息" });
+    game.messages.push({ id: randomUUID(), playerId: player.id, name: player.name, text, createdAt: Date.now() });
+    game.messages = game.messages.slice(-MAX_CHAT_MESSAGES);
     game.revision += 1;
     game.updatedAt = Date.now();
-    return sendJson(res, 200, publicGame(game));
+    return sendJson(res, 201, publicGame(game));
   }
 
   const rematchMatch = url.pathname.match(/^\/api\/game\/([^/]+)\/rematch$/);
@@ -267,6 +320,7 @@ async function handleApi(req, res, url) {
       game.rematchDeclinedBy = player.id;
       game.revision += 1;
       game.updatedAt = Date.now();
+      game.turnStartedAt = null;
       return sendJson(res, 200, publicGame(game));
     }
     if (!game.rematchRequests.includes(player.id)) game.rematchRequests.push(player.id);
@@ -292,6 +346,7 @@ async function handleApi(req, res, url) {
       game.rematchDeclinedBy = player.id;
       game.revision += 1;
       game.updatedAt = Date.now();
+      game.turnStartedAt = null;
     }
     return sendJson(res, 200, publicGame(game));
   }

@@ -5,22 +5,22 @@ const DIRECTIONS = [[1, 0], [0, 1], [1, 1], [1, -1]];
 
 const LEVELS = {
   easy: {
-    tacticalDepth: 5,
-    positionalDepth: 5,
-    timeMs: 900,
-    limits: [10, 8, 6, 4, 3]
+    tacticalDepth: 8,
+    positionalDepth: 6,
+    timeMs: 1800,
+    limits: [12, 9, 7, 5, 4, 3]
   },
   medium: {
-    tacticalDepth: 10,
-    positionalDepth: 7,
-    timeMs: 1500,
-    limits: [12, 9, 7, 5, 4, 3, 2]
+    tacticalDepth: 14,
+    positionalDepth: 8,
+    timeMs: 3500,
+    limits: [14, 10, 8, 6, 5, 4, 3, 2]
   },
   hard: {
-    tacticalDepth: 20,
-    positionalDepth: 9,
-    timeMs: 2400,
-    limits: [14, 10, 8, 6, 4, 3, 3, 2, 2]
+    tacticalDepth: 24,
+    positionalDepth: 10,
+    timeMs: 6000,
+    limits: [16, 12, 9, 7, 5, 4, 3, 3, 2, 2]
   }
 };
 
