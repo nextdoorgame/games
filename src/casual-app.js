@@ -1,65 +1,225 @@
-import { DARK, LIGHT, applyReversiMove, chooseReversiMove, createReversiBoard, reversiLegalMoves, reversiWinner } from "./reversi.js?v=neighbor-1";
-import { CHECKER_COLORS, CHECKER_HOLES, applyCheckerMove, checkerMoves, checkersWinner, createCheckersBoard } from "./chinese-checkers.js?v=neighbor-1";
-import { dealMahjong, discardMahjong, drawMahjong, isMahjongWin, chooseMahjongDiscard } from "./mahjong.js?v=neighbor-1";
-import { dealBigTwo, playBigTwo, passBigTwo, chooseBigTwoPlay, classifyBigTwo } from "./big-two.js?v=neighbor-1";
+import { DARK, LIGHT, applyReversiMove, chooseReversiMove, createReversiBoard, reversiLegalMoves, reversiWinner } from "./reversi.js?v=neighbor-2";
+import { CHECKER_COLORS, CHECKER_HOLES, applyCheckerMove, checkerMoves, checkersWinner, chooseCheckerMove, createCheckersBoard } from "./chinese-checkers.js?v=neighbor-2";
+import { dealMahjong, discardMahjong, drawMahjong, isMahjongWin, chooseMahjongDiscard } from "./mahjong.js?v=neighbor-2";
+import { dealBigTwo, playBigTwo, passBigTwo, chooseBigTwoPlay } from "./big-two.js?v=neighbor-2";
+import { applyBanqiAction, banqiActions, chooseBanqiAction, createBanqiState } from "./banqi.js?v=neighbor-2";
+import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseChessMove, createChessState, isChessCheck } from "./chess.js?v=neighbor-2";
+import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
+import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
 
-const GAMES={
-  gomoku:{name:"五子棋",players:[2],mode:"19×19 棋盤"},xiangqi:{name:"中國象棋",players:[2],mode:"經典規則"},
-  reversi:{name:"黑白棋",players:[1,2],mode:"8×8 翻子"},checkers:{name:"中國跳棋",players:[2,3],mode:"連跳規則"},
-  mahjong:{name:"麻將",players:[1,2,3,4],mode:"家庭自摸版"},bigtwo:{name:"大老二",players:[3,4,5],mode:"經典牌型"}
+const GAMES = {
+  gomoku: { name: "五子棋", players: [2], mode: "19×19 棋盤" },
+  xiangqi: { name: "中國象棋", players: [2], mode: "經典規則" },
+  reversi: { name: "黑白棋", players: [2], mode: "8×8 翻子" },
+  checkers: { name: "中國跳棋", players: [2, 3], mode: "連跳規則" },
+  mahjong: { name: "麻將", players: [1, 2, 3, 4], mode: "家庭自摸版" },
+  bigtwo: { name: "大老二", players: [3, 4, 5], mode: "經典牌型" },
+  banqi: { name: "暗棋", players: [2], mode: "翻棋吃子" },
+  chess: { name: "西洋棋", players: [2], mode: "國際規則" },
+  go: { name: "圍棋", players: [2], mode: "13 路棋盤" },
+  blackjack: { name: "二十一點", players: [3, 4, 5], mode: "莊家 17 停牌" },
+  pickred: { name: "撿紅點", players: [3, 4, 5], mode: "湊十吃牌" },
+  ninetynine: { name: "九九", players: [3, 4, 5], mode: "99 點淘汰" }
 };
-const tabs=document.querySelector("#roomGameTabs"),roomList=document.querySelector("#roomList"),roomTitle=document.querySelector("#roomLobbyTitle"),roomCount=document.querySelector("#roomPlayerCount"),roomName=document.querySelector("#roomNameInput"),roomAi=document.querySelector("#roomAiFill");
-const setup=document.querySelector("#casualSetupDialog"),setupTitle=document.querySelector("#casualSetupTitle"),setupDescription=document.querySelector("#casualSetupDescription"),playerOptions=document.querySelector("#casualPlayerOptions");
-const boardEl=document.querySelector("#casualBoard"),titleEl=document.querySelector("#casualTitle"),subtitleEl=document.querySelector("#casualSubtitle"),turnEl=document.querySelector("#casualTurn span"),statusEl=document.querySelector("#casualStatus"),rulesEl=document.querySelector("#casualRuleNote"),playersEl=document.querySelector("#casualPlayers"),primary=document.querySelector("#casualPrimaryAction"),pass=document.querySelector("#casualPass");
-let roomGame="gomoku",pendingGame="reversi",state=null,aiTimer=null,selected=new Set();
-const ROOM_API=String(window.GOMOKU_CONFIG?.apiBaseUrl||"").trim().replace(/\/$/,"");
-const roomPlayerId=sessionStorage.getItem("gomoku-player-id")||crypto.randomUUID();
-const roomPlayerName=()=>localStorage.getItem("gomoku-player-name")||"隔壁棋手";
 
-function showOnly(id){document.querySelectorAll(".view").forEach((view)=>view.classList.toggle("active",view.id===id));document.querySelectorAll(".nav-item").forEach((item)=>item.classList.toggle("active",item.dataset.view===(id==="homeView"?"home":id==="lobbyView"?"lobby":"")));window.scrollTo({top:0,behavior:"smooth"});}
-function toast(message){const el=document.querySelector("#toast");el.textContent=message;el.classList.add("show");setTimeout(()=>el.classList.remove("show"),2200);}
+const tabs = document.querySelector("#roomGameTabs");
+const roomList = document.querySelector("#roomList");
+const roomTitle = document.querySelector("#roomLobbyTitle");
+const roomCount = document.querySelector("#roomPlayerCount");
+const roomName = document.querySelector("#roomNameInput");
+const roomAi = document.querySelector("#roomAiFill");
+const setup = document.querySelector("#casualSetupDialog");
+const setupTitle = document.querySelector("#casualSetupTitle");
+const setupDescription = document.querySelector("#casualSetupDescription");
+const playerOptions = document.querySelector("#casualPlayerOptions");
+const boardEl = document.querySelector("#casualBoard");
+const titleEl = document.querySelector("#casualTitle");
+const subtitleEl = document.querySelector("#casualSubtitle");
+const turnEl = document.querySelector("#casualTurn span");
+const statusEl = document.querySelector("#casualStatus");
+const rulesEl = document.querySelector("#casualRuleNote");
+const playersEl = document.querySelector("#casualPlayers");
+const primary = document.querySelector("#casualPrimaryAction");
+const pass = document.querySelector("#casualPass");
+let roomGame = "gomoku", pendingGame = "reversi", state = null, aiTimer = null, selected = new Set();
+const ROOM_API = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
+const roomPlayerId = sessionStorage.getItem("gomoku-player-id") || crypto.randomUUID();
+const roomPlayerName = () => localStorage.getItem("gomoku-player-name") || "隔壁棋手";
 
-function storedRooms(){try{return JSON.parse(localStorage.getItem("neighbor-game-rooms")||"[]");}catch{return[];}}
-function saveRooms(rooms){localStorage.setItem("neighbor-game-rooms",JSON.stringify(rooms.slice(-40)));}
-function setRoomGame(game){roomGame=GAMES[game]?game:"gomoku";roomTitle.textContent=`${GAMES[roomGame].name}・房間大廳`;tabs.querySelectorAll("button").forEach((button)=>button.classList.toggle("active",button.dataset.game===roomGame));roomCount.replaceChildren(...GAMES[roomGame].players.map((count)=>{const option=document.createElement("option");option.value=count;option.textContent=`${count} 人`;return option;}));roomAi.closest("label").hidden=!['mahjong','bigtwo','checkers'].includes(roomGame);renderRooms();}
-async function roomRequest(path,options={}){const response=await fetch(`${ROOM_API}${path}`,{...options,headers:{"content-type":"application/json"}});const data=await response.json().catch(()=>({}));if(!response.ok)throw new Error(data.error||"房間服務暫時無法使用");return data;}
-async function renderRooms(){let rooms=[];try{if(ROOM_API){const data=await roomRequest(`/api/rooms?gameType=${encodeURIComponent(roomGame)}`);rooms=data.rooms.map((room)=>({...room,current:room.players.length,max:room.maxPlayers,ai:room.aiFill,status:room.status==="full"?"已滿":"等待中"}));}else rooms=storedRooms().filter((room)=>room.game===roomGame);}catch{rooms=storedRooms().filter((room)=>room.game===roomGame);}if(!rooms.length){roomList.innerHTML='<div class="room-empty">目前還沒有房間，成為第一位開桌的人吧。</div>';return;}roomList.replaceChildren(...rooms.map((room)=>{const row=document.createElement("div");row.className="room-row";row.innerHTML=`<strong></strong><span></span><span></span><span></span><button type="button"></button>`;row.querySelector("strong").textContent=room.name;const spans=row.querySelectorAll("span");spans[0].textContent=`${room.current}/${room.max}`;spans[1].textContent=room.ai?`${GAMES[roomGame].mode}・AI 補位`:GAMES[roomGame].mode;spans[2].textContent=room.status;const button=row.querySelector("button");button.textContent=room.status==="已滿"?"房間已滿":"加入房間";button.disabled=room.status==="已滿";button.addEventListener("click",async()=>{try{if(ROOM_API&&!room.id.startsWith("local-"))await roomRequest(`/api/rooms/${room.id}/join`,{method:"POST",body:JSON.stringify({playerId:roomPlayerId,playerName:roomPlayerName()})});if(["gomoku","xiangqi"].includes(roomGame)){document.querySelector(`.game-solo-button[data-game-type="${roomGame}"]`)?.click();toast("已加入房間，可設定棋局後開始");}else openCasualSetup(roomGame);}catch(error){toast(error.message);}});return row;}));}
+function showOnly(id) {
+  document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === id));
+  document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === (id === "homeView" ? "home" : id === "lobbyView" ? "lobby" : "")));
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+function toast(message) { const el = document.querySelector("#toast"); el.textContent = message; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 2200); }
+function schedule(fn, delay = 500) { clearTimeout(aiTimer); aiTimer = setTimeout(fn, delay); }
+function storedRooms() { try { return JSON.parse(localStorage.getItem("neighbor-game-rooms") || "[]"); } catch { return []; } }
+function saveRooms(rooms) { localStorage.setItem("neighbor-game-rooms", JSON.stringify(rooms.slice(-40))); }
 
-tabs.replaceChildren(...Object.entries(GAMES).map(([key,game])=>{const button=document.createElement("button");button.type="button";button.dataset.game=key;button.textContent=game.name;button.addEventListener("click",()=>setRoomGame(key));return button;}));
-document.querySelectorAll(".room-game-button").forEach((button)=>button.addEventListener("click",()=>setRoomGame(button.dataset.roomGame)));
-document.querySelector("#createRoom").addEventListener("click",async()=>{const name=(roomName.value.trim()||`${GAMES[roomGame].name}新桌`).slice(0,16);const max=Number(roomCount.value);try{if(ROOM_API)await roomRequest("/api/rooms",{method:"POST",body:JSON.stringify({gameType:roomGame,name,maxPlayers:max,aiFill:roomAi.checked,hostId:roomPlayerId,hostName:roomPlayerName()})});else{const rooms=storedRooms();rooms.push({id:`local-${crypto.randomUUID()}`,game:roomGame,name,current:1,max,ai:roomAi.checked,status:"等待中"});saveRooms(rooms);}roomName.value="";await renderRooms();toast(`已建立「${name}」`);}catch(error){toast(error.message);}});
+document.querySelectorAll("#gameFilters button").forEach((button) => button.addEventListener("click", () => {
+  document.querySelectorAll("#gameFilters button").forEach((item) => item.classList.toggle("active", item === button));
+  document.querySelectorAll(".game-card").forEach((card) => { card.hidden = button.dataset.filter !== "all" && card.dataset.category !== button.dataset.filter; });
+}));
+
+function setRoomGame(game) {
+  roomGame = GAMES[game] ? game : "gomoku";
+  roomTitle.textContent = `${GAMES[roomGame].name}・房間大廳`;
+  tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.game === roomGame));
+  roomCount.replaceChildren(...GAMES[roomGame].players.map((count) => { const option = document.createElement("option"); option.value = count; option.textContent = `${count} 人`; return option; }));
+  roomAi.closest("label").hidden = !["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame);
+  renderRooms();
+}
+async function roomRequest(path, options = {}) {
+  const response = await fetch(`${ROOM_API}${path}`, { ...options, headers: { "content-type": "application/json" } });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "房間服務暫時無法使用");
+  return data;
+}
+async function renderRooms() {
+  let rooms = [];
+  try {
+    if (ROOM_API) {
+      const data = await roomRequest(`/api/rooms?gameType=${encodeURIComponent(roomGame)}`);
+      rooms = data.rooms.map((room) => ({ ...room, current: room.players.length, max: room.maxPlayers, ai: room.aiFill, status: room.status === "full" ? "已滿" : "等待中" }));
+    } else rooms = storedRooms().filter((room) => room.game === roomGame);
+  } catch { rooms = storedRooms().filter((room) => room.game === roomGame); }
+  if (!rooms.length) { roomList.innerHTML = '<div class="room-empty">目前還沒有房間，成為第一位開桌的人吧。</div>'; return; }
+  roomList.replaceChildren(...rooms.map((room) => {
+    const row = document.createElement("div"); row.className = "room-row"; row.innerHTML = "<strong></strong><span></span><span></span><span></span><button type=\"button\"></button>";
+    row.querySelector("strong").textContent = room.name;
+    const spans = row.querySelectorAll("span"); spans[0].textContent = `${room.current}/${room.max}`; spans[1].textContent = room.ai ? `${GAMES[roomGame].mode}・AI 補位` : GAMES[roomGame].mode; spans[2].textContent = room.status;
+    const button = row.querySelector("button"); button.textContent = room.status === "已滿" ? "房間已滿" : "加入房間"; button.disabled = room.status === "已滿";
+    button.addEventListener("click", async () => {
+      try {
+        if (ROOM_API && !room.id.startsWith("local-")) await roomRequest(`/api/rooms/${room.id}/join`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, playerName: roomPlayerName() }) });
+        if (["gomoku", "xiangqi"].includes(roomGame)) { document.querySelector(`.game-solo-button[data-game-type="${roomGame}"]`)?.click(); toast("已加入房間，可設定棋局後開始"); }
+        else openCasualSetup(roomGame);
+      } catch (error) { toast(error.message); }
+    });
+    return row;
+  }));
+}
+
+tabs.replaceChildren(...Object.entries(GAMES).map(([key, game]) => { const button = document.createElement("button"); button.type = "button"; button.dataset.game = key; button.textContent = game.name; button.addEventListener("click", () => setRoomGame(key)); return button; }));
+document.querySelectorAll(".room-game-button").forEach((button) => button.addEventListener("click", () => setRoomGame(button.dataset.roomGame)));
+document.querySelector("#createRoom").addEventListener("click", async () => {
+  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value);
+  try {
+    if (ROOM_API) await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill: roomAi.checked, hostId: roomPlayerId, hostName: roomPlayerName() }) });
+    else { const rooms = storedRooms(); rooms.push({ id: `local-${crypto.randomUUID()}`, game: roomGame, name, current: 1, max, ai: roomAi.checked, status: "等待中" }); saveRooms(rooms); }
+    roomName.value = ""; await renderRooms(); toast(`已建立「${name}」`);
+  } catch (error) { toast(error.message); }
+});
 setRoomGame("gomoku");
-window.setInterval(()=>{if(document.querySelector("#lobbyView").classList.contains("active"))renderRooms();},3000);
+window.setInterval(() => { if (document.querySelector("#lobbyView").classList.contains("active")) renderRooms(); }, 3000);
 
-function openCasualSetup(game){pendingGame=game;const meta=GAMES[game];setupTitle.textContent=`設定${meta.name}遊戲`;setupDescription.textContent=game==="reversi"?"你執黑先手，依難度挑戰 AI。":game==="checkers"?"選擇 2 或 3 位玩家，在同一台裝置輪流操作。":game==="mahjong"?"選擇同桌玩家數，未坐滿的四方座位由 AI 補位。":"選擇 3～5 人牌局，其餘對手由 AI 補位。";const options=game==="reversi"?[1]:meta.players;playerOptions.replaceChildren(...options.map((count,index)=>{const label=document.createElement("label");label.innerHTML=`<input type="radio" name="casualPlayers" value="${count}" ${index===0?"checked":""}><span><b>${count} 人${game==="mahjong"?"玩家":game==="reversi"?"＋ AI":"局"}</b><small>${game==="mahjong"?`${4-count} 個 AI 座位`:game==="checkers"?"本機輪流操作":"AI 對手補位"}</small></span>`;return label;}));setup.showModal();}
-document.querySelectorAll(".casual-solo-button").forEach((button)=>button.addEventListener("click",()=>openCasualSetup(button.dataset.gameType)));
-document.querySelector("#startCasual").addEventListener("click",()=>{const form=new FormData(setup.querySelector("form"));setup.close();startGame(pendingGame,Number(form.get("casualPlayers"))||1,form.get("casualDifficulty")||"medium");});
+function openCasualSetup(game) {
+  pendingGame = game; const meta = GAMES[game]; setupTitle.textContent = `設定${meta.name}遊戲`;
+  const descriptions = {
+    reversi: "你執黑先手，依難度挑戰 AI。", checkers: "選擇 2 或 3 人桌，其餘座位由 AI 補齊。", mahjong: "選擇真人玩家數，未坐滿的四方座位由 AI 補位。", bigtwo: "選擇 3～5 人牌局，其餘對手由 AI 補位。",
+    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。"
+  };
+  setupDescription.textContent = descriptions[game] || "選擇遊戲人數與 AI 難度。";
+  const options = ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
+  playerOptions.replaceChildren(...options.map((count, index) => {
+    const label = document.createElement("label");
+    const title = ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
+    const detail = game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
+    label.innerHTML = `<input type="radio" name="casualPlayers" value="${count}" ${index === 0 ? "checked" : ""}><span><b>${title}</b><small>${detail}</small></span>`;
+    return label;
+  }));
+  setup.showModal();
+}
+document.querySelectorAll(".casual-solo-button").forEach((button) => button.addEventListener("click", () => openCasualSetup(button.dataset.gameType)));
+document.querySelector("#startCasual").addEventListener("click", () => { const form = new FormData(setup.querySelector("form")); setup.close(); startGame(pendingGame, Number(form.get("casualPlayers")) || 1, form.get("casualDifficulty") || "medium"); });
 
-function setPlayers(items,active){playersEl.replaceChildren(...items.map((item,index)=>{const row=document.createElement("div");row.className=`casual-player${index===active?" active":""}`;row.style.setProperty("--player-color",item.color||"#777");row.innerHTML=`<b></b><span></span>`;row.querySelector("b").textContent=item.name;row.querySelector("span").textContent=item.detail||"";return row;}));}
-function schedule(fn,delay=500){clearTimeout(aiTimer);aiTimer=setTimeout(fn,delay);}
-function startGame(game,players,difficulty){clearTimeout(aiTimer);selected.clear();state={game,players,difficulty};showOnly("casualView");titleEl.textContent=GAMES[game].name;subtitleEl.textContent="隔壁家庭局";pass.hidden=true;primary.hidden=true;if(game==="reversi")startReversi();if(game==="checkers")startCheckers(players);if(game==="mahjong")startMahjong(players);if(game==="bigtwo")startBigTwo(players);}
+function setPlayers(items, active) {
+  playersEl.replaceChildren(...items.map((item, index) => { const row = document.createElement("div"); row.className = `casual-player${index === active ? " active" : ""}`; row.style.setProperty("--player-color", item.color || "#777"); row.innerHTML = "<b></b><span></span>"; row.querySelector("b").textContent = item.name; row.querySelector("span").textContent = item.detail || ""; return row; }));
+}
+function startGame(game, players, difficulty) {
+  clearTimeout(aiTimer); selected.clear(); state = { game, players, difficulty }; showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
+  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(players), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players) })[game]?.();
+}
 
-function startReversi(){state={...state,board:createReversiBoard(),turn:DARK,finished:false};rulesEl.textContent="8×8 棋盤，夾住對方棋子即可翻面；雙方都無合法位置時，以棋子較多者獲勝。";renderReversi();}
-function renderReversi(){const legal=reversiLegalMoves(state.board,state.turn);boardEl.innerHTML='<div class="reversi-board"></div>';const grid=boardEl.firstElementChild;state.board.forEach((piece,index)=>{const button=document.createElement("button");button.className=`reversi-cell${legal.includes(index)&&state.turn===DARK?" legal":""}`;button.type="button";button.ariaLabel=`第 ${Math.floor(index/8)+1} 行第 ${index%8+1} 列`;if(piece){const disc=document.createElement("i");disc.className=`reversi-piece ${piece===DARK?"dark":"light"}`;button.append(disc);}button.addEventListener("click",()=>playReversi(index));grid.append(button);});const dark=state.board.filter((x)=>x===DARK).length,light=state.board.filter((x)=>x===LIGHT).length;setPlayers([{name:"你・黑棋",detail:dark,color:"#222"},{name:"AI・白棋",detail:light,color:"#ddd"}],state.turn-1);turnEl.textContent=state.finished?"本局結束":state.turn===DARK?"輪到你了":"AI 思考中";statusEl.textContent=state.finished?`黑 ${dark}：白 ${light}，${dark===light?"和棋":reversiWinner(state.board)===DARK?"你獲勝！":"AI 獲勝"}`:state.turn===DARK?"選擇有提示點的格子落子。":"AI 正在評估角落與行動力。";}
-function advanceReversi(){const other=state.turn===DARK?LIGHT:DARK;if(reversiLegalMoves(state.board,other).length)state.turn=other;else if(!reversiLegalMoves(state.board,state.turn).length)state.finished=true;renderReversi();if(!state.finished&&state.turn===LIGHT)schedule(()=>{const move=chooseReversiMove(state.board,LIGHT,state.difficulty);if(move!==null)state.board=applyReversiMove(state.board,move,LIGHT).board;advanceReversi();});}
-function playReversi(index){if(state.turn!==DARK||state.finished)return;const result=applyReversiMove(state.board,index,DARK);if(!result)return;state.board=result.board;advanceReversi();}
+function startReversi() { state = { ...state, board: createReversiBoard(), turn: DARK, finished: false }; rulesEl.textContent = "8×8 棋盤，夾住對方棋子即可翻面；雙方都無合法位置時，以棋子較多者獲勝。"; renderReversi(); }
+function renderReversi() {
+  const legal = reversiLegalMoves(state.board, state.turn); boardEl.innerHTML = '<div class="reversi-board"></div>'; const grid = boardEl.firstElementChild;
+  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.className = `reversi-cell${legal.includes(index) && state.turn === DARK ? " legal" : ""}`; button.type = "button"; button.ariaLabel = `第 ${Math.floor(index / 8) + 1} 行第 ${index % 8 + 1} 列`; if (piece) { const disc = document.createElement("i"); disc.className = `reversi-piece ${piece === DARK ? "dark" : "light"}`; button.append(disc); } button.addEventListener("click", () => playReversi(index)); grid.append(button); });
+  const dark = state.board.filter((x) => x === DARK).length, light = state.board.filter((x) => x === LIGHT).length;
+  setPlayers([{ name: "你・黑棋", detail: dark, color: "#222" }, { name: "AI・白棋", detail: light, color: "#ddd" }], state.turn - 1); turnEl.textContent = state.finished ? "本局結束" : state.turn === DARK ? "輪到你了" : "AI 思考中"; statusEl.textContent = state.finished ? `黑 ${dark}：白 ${light}，${dark === light ? "和棋" : reversiWinner(state.board) === DARK ? "你獲勝！" : "AI 獲勝"}` : state.turn === DARK ? "選擇有提示點的格子落子。" : "AI 正在評估角落與行動力。";
+}
+function advanceReversi() { const other = state.turn === DARK ? LIGHT : DARK; if (reversiLegalMoves(state.board, other).length) state.turn = other; else if (!reversiLegalMoves(state.board, state.turn).length) state.finished = true; renderReversi(); if (!state.finished && state.turn === LIGHT) schedule(() => { const move = chooseReversiMove(state.board, LIGHT, state.difficulty); if (move !== null) state.board = applyReversiMove(state.board, move, LIGHT).board; advanceReversi(); }); }
+function playReversi(index) { if (state.turn !== DARK || state.finished) return; const result = applyReversiMove(state.board, index, DARK); if (!result) return; state.board = result.board; advanceReversi(); }
 
-function startCheckers(players){state={...state,total:players,board:createCheckersBoard(players),turn:0,selected:null,legal:[],winner:0};rulesEl.textContent="2～3 位玩家輪流操作；棋子可移到相鄰空位，或跨過任一棋子連續跳躍，率先把全部棋子移入對面營區者獲勝。";renderCheckers();}
-function renderCheckers(){boardEl.innerHTML='<div class="checker-board"></div>';const surface=boardEl.firstElementChild;CHECKER_HOLES.forEach((hole)=>{const button=document.createElement("button");button.type="button";button.className=`checker-hole${state.selected===hole.key?" selected":""}${state.legal.includes(hole.key)?" legal":""}`;button.style.left=`${50+(hole.q+hole.r/2)*5.5}%`;button.style.top=`${50+hole.r*4.8}%`;const owner=state.board[hole.key];button.ariaLabel=owner?`玩家 ${owner} 的跳棋，位置 ${hole.key}`:`空位 ${hole.key}`;if(owner){const piece=document.createElement("i");piece.className=`checker-piece ${CHECKER_COLORS[owner-1]}`;button.append(piece);}button.addEventListener("click",()=>clickChecker(hole.key));surface.append(button);});setPlayers(Array.from({length:state.total},(_,i)=>({name:`玩家 ${i+1}`,detail:`${Object.values(state.board).filter((x)=>x===i+1).length} 棋`,color:["#b94136","#315b88","#d5a72d"][i]})),state.turn);turnEl.textContent=state.winner?"本局結束":`輪到玩家 ${state.turn+1}`;statusEl.textContent=state.winner?`玩家 ${state.winner} 完成換位，獲得勝利！`:`玩家 ${state.turn+1} 請選擇自己的棋子，再選擇綠色目標。`;}
-function clickChecker(key){if(state.winner)return;if(state.legal.includes(key)){state.board=applyCheckerMove(state.board,state.selected,key);state.selected=null;state.legal=[];finishCheckerTurn();return;}if(state.board[key]===state.turn+1){state.selected=key;state.legal=checkerMoves(state.board,key);}else{state.selected=null;state.legal=[];}renderCheckers();}
-function finishCheckerTurn(){state.winner=checkersWinner(state.board,state.total);if(!state.winner)state.turn=(state.turn+1)%state.total;renderCheckers();}
+function startCheckers(total) { state = { ...state, total, board: createCheckersBoard(total), turn: 0, selected: null, legal: [], winner: 0 }; rulesEl.textContent = "你是玩家 1，其餘座位由 AI 補齊；可走相鄰空位或跨過任一棋子連續跳躍，先把全部棋子移入對面營區者獲勝。"; renderCheckers(); }
+function renderCheckers() {
+  boardEl.innerHTML = '<div class="checker-board"></div>'; const surface = boardEl.firstElementChild;
+  CHECKER_HOLES.forEach((hole) => { const button = document.createElement("button"); button.type = "button"; button.className = `checker-hole${state.selected === hole.key ? " selected" : ""}${state.legal.includes(hole.key) ? " legal" : ""}`; button.style.left = `${50 + (hole.q + hole.r / 2) * 5.5}%`; button.style.top = `${50 + hole.r * 4.8}%`; const owner = state.board[hole.key]; button.ariaLabel = owner ? `玩家 ${owner} 的跳棋，位置 ${hole.key}` : `空位 ${hole.key}`; if (owner) { const piece = document.createElement("i"); piece.className = `checker-piece ${CHECKER_COLORS[owner - 1]}`; button.append(piece); } button.addEventListener("click", () => clickChecker(hole.key)); surface.append(button); });
+  setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: i === 0 ? "你" : `AI ${i}`, detail: `${Object.values(state.board).filter((x) => x === i + 1).length} 棋`, color: ["#b94136", "#315b88", "#d5a72d"][i] })), state.turn); turnEl.textContent = state.winner ? "本局結束" : state.turn === 0 ? "輪到你了" : `AI ${state.turn} 思考`; statusEl.textContent = state.winner ? `${state.winner === 1 ? "你" : `AI ${state.winner - 1}`} 完成換位，獲得勝利！` : state.turn === 0 ? "選擇自己的棋子，再選擇綠色目標。" : "AI 正在規劃連跳路線。";
+}
+function clickChecker(key) { if (state.winner || state.turn !== 0) return; if (state.legal.includes(key)) { state.board = applyCheckerMove(state.board, state.selected, key); state.selected = null; state.legal = []; finishCheckerTurn(); return; } if (state.board[key] === 1) { state.selected = key; state.legal = checkerMoves(state.board, key); } else { state.selected = null; state.legal = []; } renderCheckers(); }
+function finishCheckerTurn() { state.winner = checkersWinner(state.board, state.total); if (!state.winner) state.turn = (state.turn + 1) % state.total; renderCheckers(); if (!state.winner && state.turn !== 0) schedule(aiChecker, 420); }
+function aiChecker() { const move = chooseCheckerMove(state.board, state.turn); if (move) state.board = applyCheckerMove(state.board, move.from, move.to); finishCheckerTurn(); }
 
-function startMahjong(humans){state={...state,...dealMahjong(4),humans};rulesEl.textContent="家庭自摸版：使用 136 張牌，每家 13 張，湊成四組順子／刻子加一對將即可胡牌；本版不含花牌與搶碰吃。";primary.hidden=false;primary.textContent="自摸檢查";pass.hidden=true;renderMahjong();}
-function renderMahjong(){const current=state.turn;boardEl.innerHTML='<div class="mahjong-table"><div class="mahjong-opponents"></div><div class="mahjong-discards"><div class="wall-count"></div></div><div class="mahjong-hand"></div></div>';const seats=boardEl.querySelector(".mahjong-opponents");for(let i=1;i<4;i++){const seat=document.createElement("div");seat.className="mahjong-seat";seat.textContent=`${i<state.humans?`玩家 ${i+1}`:`AI ${i}`}・${state.hands[i].length} 張`;seats.append(seat);}const discardArea=boardEl.querySelector(".mahjong-discards");discardArea.querySelector(".wall-count").textContent=`牌牆剩餘 ${state.wall.length} 張`;state.discards.flat().slice(-28).forEach((tile)=>discardArea.append(tileButton(tile,false)));const hand=boardEl.querySelector(".mahjong-hand");const showHand=current<state.humans?state.hands[current]:state.hands[0];showHand.forEach((tile,index)=>{const button=tileButton(tile,true);button.addEventListener("click",()=>humanMahjongDiscard(index));hand.append(button);});setPlayers(Array.from({length:4},(_,i)=>({name:i<state.humans?`玩家 ${i+1}`:`AI ${i-state.humans+1}`,detail:`${state.hands[i].length} 張`,color:["#b94136","#315b88","#d5a72d","#315b49"][i]})),current);turnEl.textContent=state.winner!==null?"本局結束":current<state.humans?`玩家 ${current+1} 出牌`:`AI ${current-state.humans+1} 思考`;statusEl.textContent=state.winner!==null?`${state.winner<state.humans?`玩家 ${state.winner+1}`:`AI ${state.winner-state.humans+1}`} 自摸胡牌！`:current<state.humans?"選擇一張牌打出。":"AI 正在整理牌型。";}
-function tileButton(tile,button){const el=document.createElement(button?"button":"i");el.className=`mahjong-tile${tile.suit==="字"?" honor":""}`;el.textContent=tile.label;return el;}
-function humanMahjongDiscard(index){if(state.winner!==null||state.turn>=state.humans)return;state=discardMahjong(state,state.turn,index);advanceMahjong();}
-function advanceMahjong(){if(!state.wall.length){statusEl.textContent="牌牆用盡，本局流局。";return;}state=drawMahjong(state,state.turn);renderMahjong();if(state.winner!==null)return;if(state.turn>=state.humans)schedule(()=>{state=discardMahjong(state,state.turn,chooseMahjongDiscard(state.hands[state.turn]));advanceMahjong();},430);}
-primary.addEventListener("click",()=>{if(state?.game==="mahjong"&&state.turn<state.humans){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();});
+function startBanqi() { state = { ...state, ...createBanqiState(), selected: null, legal: [] }; rulesEl.textContent = "4×8 棋盤，第一枚翻棋決定陣營；一般棋子走一格，炮隔一枚棋子吃子，兵可吃將而將不能吃兵。"; renderBanqi(); }
+function renderBanqi() {
+  boardEl.innerHTML = '<div class="banqi-board"></div>'; const grid = boardEl.firstElementChild;
+  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.type = "button"; button.className = `banqi-cell${state.selected === index ? " selected" : ""}${state.legal.includes(index) ? " legal" : ""}${piece?.color === "red" && piece.faceUp ? " red" : ""}`; button.textContent = piece ? piece.faceUp ? piece.name : "暗" : ""; button.addEventListener("click", () => clickBanqi(index)); grid.append(button); });
+  setPlayers([{ name: "你", detail: state.playerColors[0] === "red" ? "紅方" : state.playerColors[0] === "black" ? "黑方" : "待翻棋" , color: "#b94136" }, { name: "AI", detail: state.playerColors[1] === "red" ? "紅方" : state.playerColors[1] === "black" ? "黑方" : "待翻棋", color: "#222" }], state.turn); turnEl.textContent = state.winner !== null ? "本局結束" : state.turn === 0 ? "輪到你了" : "AI 思考中"; statusEl.textContent = state.winner !== null ? `${state.winner === 0 ? "你" : "AI"} 吃完對方棋子，獲得勝利！` : state.turn === 0 ? "翻開暗棋，或選擇己方棋子移動。" : "AI 正在選擇翻棋或吃子。";
+}
+function clickBanqi(index) { if (state.turn !== 0 || state.winner !== null) return; const piece = state.board[index], actions = banqiActions(state); const flip = actions.find((action) => action.type === "flip" && action.from === index); if (flip) { state = { ...applyBanqiAction(state, flip), game: "banqi", difficulty: state.difficulty }; renderBanqi(); if (state.winner === null) schedule(aiBanqi); return; } if (state.legal.includes(index)) { state = { ...applyBanqiAction(state, { type: "move", from: state.selected, to: index }), game: "banqi", difficulty: state.difficulty, selected: null, legal: [] }; renderBanqi(); if (state.winner === null) schedule(aiBanqi); return; } if (piece?.faceUp && piece.color === state.playerColors[0]) { state.selected = index; state.legal = actions.filter((action) => action.type === "move" && action.from === index).map((action) => action.to); } else { state.selected = null; state.legal = []; } renderBanqi(); }
+function aiBanqi() { const action = chooseBanqiAction(state); if (action) state = { ...applyBanqiAction(state, action), game: "banqi", difficulty: state.difficulty, selected: null, legal: [] }; renderBanqi(); }
 
-function startBigTwo(total){state={...state,...dealBigTwo(total),total};rulesEl.textContent="3♦ 首攻；可出單張、對子、三條或五張牌型。五張牌依序為同花順、鐵支、葫蘆、同花、順子；點數 2 最大。";primary.hidden=false;primary.textContent="出牌";pass.hidden=false;renderBigTwo();if(state.turn!==0)schedule(aiBigTwo,500);}
-function renderBigTwo(){boardEl.innerHTML='<div class="bigtwo-table"><div class="bigtwo-opponents"></div><div class="bigtwo-center"></div><div class="bigtwo-hand"></div></div>';const opponents=boardEl.querySelector(".bigtwo-opponents");for(let i=1;i<state.total;i++){const el=document.createElement("div");el.className="bigtwo-opponent";el.innerHTML=`AI ${i}<b>${state.hands[i].length}</b>`;opponents.append(el);}const center=boardEl.querySelector(".bigtwo-center");if(state.lastPlay){const wrap=document.createElement("div");wrap.className="playing-cards";state.lastPlay.cards.forEach((card)=>wrap.append(cardButton(card,false)));center.append(wrap);}else center.textContent="新一輪，自由出牌";const hand=boardEl.querySelector(".bigtwo-hand");state.hands[0].forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{if(state.turn!==0)return;selected.has(card.id)?selected.delete(card.id):selected.add(card.id);renderBigTwo();});hand.append(button);});setPlayers(Array.from({length:state.total},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:`${state.hands[i].length} 張`,color:i===0?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":state.turn===0?"輪到你了":`AI ${state.turn} 出牌`;statusEl.textContent=state.winner!==null?`${state.winner===0?"你":`AI ${state.winner}`} 率先出完手牌！`:state.turn===0?(state.lastPlay?"選牌壓過桌面牌型，或選擇過牌。":"選擇合法牌型開始新一輪。"):`AI ${state.turn} 正在選牌。`;pass.disabled=state.turn!==0||!state.lastPlay||state.leader===0;primary.disabled=state.turn!==0;}
-function cardButton(card,button){const el=document.createElement(button?"button":"i");el.className=`playing-card${["♦","♥"].includes(card.suit)?" red":""}`;el.textContent=`${card.rank}${card.suit}`;return el;}
-function humanBigTwoPlay(){if(state.game!=="bigtwo"||state.turn!==0)return;const ids=[...selected];const next=playBigTwo(state,0,ids);if(next===state){toast("這組牌型不合法，或無法壓過上一手");return;}state=next;selected.clear();renderBigTwo();if(state.winner===null)schedule(aiBigTwo,500);}
-function aiBigTwo(){if(state.winner!==null||state.turn===0)return;const move=chooseBigTwoPlay(state,state.turn);state=move?playBigTwo(state,state.turn,move):passBigTwo(state,state.turn);renderBigTwo();if(state.winner===null&&state.turn!==0)schedule(aiBigTwo,420);}
-pass.addEventListener("click",()=>{if(state?.game!=="bigtwo"||state.turn!==0)return;const next=passBigTwo(state,0);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();if(state.turn!==0)schedule(aiBigTwo,420);});
-document.querySelector("#casualRestart").addEventListener("click",()=>startGame(state.game,state.game==="checkers"?state.total:state.game==="mahjong"?state.humans:state.game==="bigtwo"?state.total:1,state.difficulty));
+function startChess() { state = { ...state, ...createChessState(), selected: null, legal: [] }; rulesEl.textContent = "你執白先行；支援將軍、將死、王車易位、吃過路兵與兵升變。"; renderChess(); }
+function renderChess() {
+  boardEl.innerHTML = '<div class="chess-board"></div>'; const grid = boardEl.firstElementChild;
+  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.type = "button"; button.className = `chess-cell ${(Math.floor(index / 8) + index % 8) % 2 ? "dark" : "light"}${state.selected === index ? " selected" : ""}${state.legal.includes(index) ? " legal" : ""}`; if (piece) { button.textContent = CHESS_SYMBOLS[piece.color][piece.type]; button.classList.add(piece.color); } button.addEventListener("click", () => clickChess(index)); grid.append(button); });
+  const white = state.board.filter((piece) => piece?.color === "white").length, black = state.board.filter((piece) => piece?.color === "black").length;
+  setPlayers([{ name: "你・白棋", detail: `${white} 棋`, color: "#eee" }, { name: "AI・黑棋", detail: `${black} 棋`, color: "#222" }], state.turn === "white" ? 0 : 1); turnEl.textContent = state.winner || state.draw ? "本局結束" : state.turn === "white" ? "輪到你了" : "AI 思考中"; statusEl.textContent = state.winner ? `${state.winner === "white" ? "你" : "AI"} 將死對手！` : state.draw ? "無合法步且未被將軍，本局和棋。" : `${isChessCheck(state, state.turn) ? "將軍！" : ""}${state.turn === "white" ? "選擇白棋移動。" : "AI 正在計算走法。"}`;
+}
+function clickChess(index) { if (state.turn !== "white" || state.winner || state.draw) return; if (state.legal.includes(index)) { state = { ...applyChessMove(state, { from: state.selected, to: index }), game: "chess", difficulty: state.difficulty, selected: null, legal: [] }; renderChess(); if (!state.winner && !state.draw) schedule(aiChess); return; } if (state.board[index]?.color === "white") { state.selected = index; state.legal = chessLegalMoves(state, index); } else { state.selected = null; state.legal = []; } renderChess(); }
+function aiChess() { const move = chooseChessMove(state, state.difficulty); if (move) state = { ...applyChessMove(state, move), game: "chess", difficulty: state.difficulty, selected: null, legal: [] }; renderChess(); }
+
+function startGo() { state = { ...state, ...createGoState() }; rulesEl.textContent = "13 路圍棋：包圍無氣棋群即可提子，禁止自殺與立即打劫；雙方連續停著後依中國面積法計分，白貼 6.5 目。"; pass.hidden = false; pass.textContent = "停一手"; renderGo(); }
+function renderGo() {
+  boardEl.innerHTML = '<div class="go-board"></div>'; const grid = boardEl.firstElementChild;
+  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.type = "button"; button.className = `go-cell${state.lastMove === index ? " last" : ""}`; button.ariaLabel = `第 ${Math.floor(index / GO_SIZE) + 1} 行第 ${index % GO_SIZE + 1} 列`; if (piece) { const stone = document.createElement("i"); stone.className = piece === 1 ? "black" : "white"; button.append(stone); } button.addEventListener("click", () => playGo(index)); grid.append(button); });
+  setPlayers([{ name: "你・黑棋", detail: `提 ${state.captures[0]} 子`, color: "#222" }, { name: "AI・白棋", detail: `提 ${state.captures[1]} 子`, color: "#eee" }], state.turn - 1); turnEl.textContent = state.winner ? "本局結束" : state.turn === 1 ? "輪到你了" : "AI 思考中"; statusEl.textContent = state.winner ? state.winner === 3 ? `黑 ${state.scores[0]}：白 ${state.scores[1]}，和棋。` : `黑 ${state.scores[0]}：白 ${state.scores[1]}，${state.winner === 1 ? "你獲勝！" : "AI 獲勝"}` : state.turn === 1 ? "選擇交叉點落子，或停一手。" : "AI 正在判斷棋形。";
+}
+function playGo(index) { if (state.turn !== 1 || state.winner) return; const next = applyGoMove(state, index); if (next === state) { toast("此處為自殺、重複劫形或已有棋子"); return; } state = { ...next, game: "go", difficulty: state.difficulty }; renderGo(); schedule(aiGo); }
+function aiGo() { if (state.winner) return; const move = chooseGoMove(state, state.difficulty); state = { ...applyGoMove(state, move), game: "go", difficulty: state.difficulty }; renderGo(); }
+function passGo() { if (state.turn !== 1 || state.winner) return; state = { ...applyGoMove(state, null), game: "go", difficulty: state.difficulty }; renderGo(); if (!state.winner) schedule(aiGo); }
+
+function startMahjong(humans) { state = { ...state, ...dealMahjong(4), humans }; rulesEl.textContent = "家庭自摸版：使用 136 張牌，每家 13 張，湊成四組順子／刻子加一對將即可胡牌；本版不含花牌與搶碰吃。"; primary.hidden = false; primary.textContent = "自摸檢查"; renderMahjong(); }
+function renderMahjong() { const current = state.turn; boardEl.innerHTML = '<div class="mahjong-table"><div class="mahjong-opponents"></div><div class="mahjong-discards"><div class="wall-count"></div></div><div class="mahjong-hand"></div></div>'; const seats = boardEl.querySelector(".mahjong-opponents"); for (let i = 1; i < 4; i += 1) { const seat = document.createElement("div"); seat.className = "mahjong-seat"; seat.textContent = `${i < state.humans ? `玩家 ${i + 1}` : `AI ${i}`}・${state.hands[i].length} 張`; seats.append(seat); } const discardArea = boardEl.querySelector(".mahjong-discards"); discardArea.querySelector(".wall-count").textContent = `牌牆剩餘 ${state.wall.length} 張`; state.discards.flat().slice(-28).forEach((tile) => discardArea.append(tileButton(tile, false))); const hand = boardEl.querySelector(".mahjong-hand"); const showHand = current < state.humans ? state.hands[current] : state.hands[0]; showHand.forEach((tile, index) => { const button = tileButton(tile, true); button.addEventListener("click", () => humanMahjongDiscard(index)); hand.append(button); }); setPlayers(Array.from({ length: 4 }, (_, i) => ({ name: i < state.humans ? `玩家 ${i + 1}` : `AI ${i - state.humans + 1}`, detail: `${state.hands[i].length} 張`, color: ["#b94136", "#315b88", "#d5a72d", "#315b49"][i] })), current); turnEl.textContent = state.winner !== null ? "本局結束" : current < state.humans ? `玩家 ${current + 1} 出牌` : `AI ${current - state.humans + 1} 思考`; statusEl.textContent = state.winner !== null ? `${state.winner < state.humans ? `玩家 ${state.winner + 1}` : `AI ${state.winner - state.humans + 1}`} 自摸胡牌！` : current < state.humans ? "選擇一張牌打出。" : "AI 正在整理牌型。"; }
+function tileButton(tile, button) { const el = document.createElement(button ? "button" : "i"); el.className = `mahjong-tile${tile.suit === "字" ? " honor" : ""}`; el.textContent = tile.label; return el; }
+function humanMahjongDiscard(index) { if (state.winner !== null || state.turn >= state.humans) return; state = discardMahjong(state, state.turn, index); advanceMahjong(); }
+function advanceMahjong() { if (!state.wall.length) { statusEl.textContent = "牌牆用盡，本局流局。"; return; } state = drawMahjong(state, state.turn); renderMahjong(); if (state.winner !== null) return; if (state.turn >= state.humans) schedule(() => { state = discardMahjong(state, state.turn, chooseMahjongDiscard(state.hands[state.turn])); advanceMahjong(); }, 430); }
+
+function startBigTwo(total) { state = { ...state, ...dealBigTwo(total), total }; rulesEl.textContent = "3♦ 首攻；可出單張、對子、三條或五張牌型。五張牌依序為同花順、鐵支、葫蘆、同花、順子；點數 2 最大。"; primary.hidden = false; primary.textContent = "出牌"; pass.hidden = false; pass.textContent = "過牌"; renderBigTwo(); if (state.turn !== 0) schedule(aiBigTwo, 500); }
+function renderBigTwo() { boardEl.innerHTML = '<div class="bigtwo-table"><div class="bigtwo-opponents"></div><div class="bigtwo-center"></div><div class="bigtwo-hand"></div></div>'; const opponents = boardEl.querySelector(".bigtwo-opponents"); for (let i = 1; i < state.total; i += 1) { const el = document.createElement("div"); el.className = "bigtwo-opponent"; el.innerHTML = `AI ${i}<b>${state.hands[i].length}</b>`; opponents.append(el); } const center = boardEl.querySelector(".bigtwo-center"); if (state.lastPlay) { const wrap = document.createElement("div"); wrap.className = "playing-cards"; state.lastPlay.cards.forEach((card) => wrap.append(cardButton(card, false))); center.append(wrap); } else center.textContent = "新一輪，自由出牌"; const hand = boardEl.querySelector(".bigtwo-hand"); state.hands[0].forEach((card) => { const button = cardButton(card, true); button.classList.toggle("selected", selected.has(card.id)); button.addEventListener("click", () => { if (state.turn !== 0) return; selected.has(card.id) ? selected.delete(card.id) : selected.add(card.id); renderBigTwo(); }); hand.append(button); }); setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: i === 0 ? "你" : `AI ${i}`, detail: `${state.hands[i].length} 張`, color: i === 0 ? "#b94136" : "#315b49" })), state.turn); turnEl.textContent = state.winner !== null ? "本局結束" : state.turn === 0 ? "輪到你了" : `AI ${state.turn} 出牌`; statusEl.textContent = state.winner !== null ? `${state.winner === 0 ? "你" : `AI ${state.winner}`} 率先出完手牌！` : state.turn === 0 ? state.lastPlay ? "選牌壓過桌面牌型，或選擇過牌。" : "選擇合法牌型開始新一輪。" : `AI ${state.turn} 正在選牌。`; pass.disabled = state.turn !== 0 || !state.lastPlay || state.leader === 0; primary.disabled = state.turn !== 0; }
+function cardButton(card, button) { const el = document.createElement(button ? "button" : "i"); el.className = `playing-card${["♦", "♥"].includes(card.suit) ? " red" : ""}`; el.textContent = `${card.rank}${card.suit}`; return el; }
+function humanBigTwoPlay() { if (state.game !== "bigtwo" || state.turn !== 0) return; const next = playBigTwo(state, 0, [...selected]); if (next === state) { toast("這組牌型不合法，或無法壓過上一手"); return; } state = next; selected.clear(); renderBigTwo(); if (state.winner === null) schedule(aiBigTwo, 500); }
+function aiBigTwo() { if (state.winner !== null || state.turn === 0) return; const move = chooseBigTwoPlay(state, state.turn); state = move ? playBigTwo(state, state.turn, move) : passBigTwo(state, state.turn); renderBigTwo(); if (state.winner === null && state.turn !== 0) schedule(aiBigTwo, 420); }
+
+function startBlackjack(total) { state = { ...state, ...createBlackjackState(total), total }; rulesEl.textContent = "A 可算 1 或 11，J/Q/K 為 10；玩家不爆 21 且高於莊家即勝，莊家 16 以下補牌、17 起停牌。"; primary.hidden = false; primary.textContent = "補牌"; pass.hidden = false; pass.textContent = "停牌"; renderBlackjack(); }
+function renderBlackjack() { boardEl.innerHTML = '<div class="card-table blackjack-table"><div class="dealer-hand"></div><div class="blackjack-seats"></div><div class="player-card-hand"></div></div>'; const dealer = boardEl.querySelector(".dealer-hand"); dealer.append(Object.assign(document.createElement("strong"), { textContent: state.phase === "finished" ? `莊家 ${blackjackScore(state.dealer).total} 點` : "莊家" })); state.dealer.forEach((card,index) => dealer.append(index === 1 && state.phase !== "finished" ? cardBack() : cardButton(card,false))); const seats = boardEl.querySelector(".blackjack-seats"); for (let i=1;i<state.total;i+=1) { const seat=document.createElement("div"); seat.className="card-seat"; seat.textContent=`AI ${i}・${state.phase === "finished" ? blackjackScore(state.hands[i]).total : "?"} 點`; seats.append(seat); } const hand=boardEl.querySelector(".player-card-hand"); state.hands[0].forEach((card)=>hand.append(cardButton(card,false))); setPlayers(Array.from({length:state.total},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:state.phase === "finished"||i===0?`${blackjackScore(state.hands[i]).total} 點`:`${state.hands[i].length} 張`,color:i===0?"#b94136":"#315b49"})),state.phase==="players"?state.turn:-1); turnEl.textContent=state.phase==="finished"?"本局結束":state.turn===0?"輪到你了":state.phase==="dealer"?"莊家補牌":`AI ${state.turn} 決定`; statusEl.textContent=state.phase==="finished"?state.results.map((result,i)=>`${i===0?"你":`AI ${i}`}：${result==="win"?"勝":result==="push"?"和":"負"}`).join("　"):state.turn===0?`目前 ${blackjackScore(state.hands[0]).total} 點，選擇補牌或停牌。`:"其他玩家正在依牌面決定。"; primary.disabled=state.turn!==0||state.phase!=="players"; pass.disabled=state.turn!==0||state.phase!=="players"; }
+function cardBack(){const el=document.createElement("i");el.className="playing-card card-back";el.textContent="同樂";return el;}
+function humanBlackjackHit(){if(state.game!=="blackjack"||state.turn!==0)return;state=hitBlackjack(state,0);renderBlackjack();if(state.statuses[0]!=="playing")humanBlackjackStand();}
+function humanBlackjackStand(){if(state.game!=="blackjack"||state.turn!==0)return;state=standBlackjack(state,0);renderBlackjack();advanceBlackjack();}
+function advanceBlackjack(){if(state.phase==="dealer"){schedule(()=>{state=settleBlackjack(state);renderBlackjack();},500);return;}if(state.phase==="players"&&state.turn>0)schedule(()=>{state=runBlackjackAiTurn(state);renderBlackjack();advanceBlackjack();},420);}
+
+function startPickRed(total){state={...state,...createPickRedState(total),total,pendingCard:null};rulesEl.textContent="打出手牌與桌面數字牌湊成 10 即可吃牌，J/Q/K 必須同字；紅 A 20 分，其餘紅牌依牌面計分，最高分獲勝。";renderPickRed();}
+function renderPickRed(){boardEl.innerHTML='<div class="card-table pickred-table"><div class="pickred-table-cards"></div><div class="player-card-hand"></div></div>';const table=boardEl.querySelector(".pickred-table-cards"),pending=state.pendingCard?state.hands[0].find((card)=>card.id===state.pendingCard):null,matches=pending?pickRedMatches(pending,state.table).map((card)=>card.id):[];state.table.forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("legal",matches.includes(card.id));button.addEventListener("click",()=>{if(matches.includes(card.id))humanPickRed(state.pendingCard,card.id);});table.append(button);});const hand=boardEl.querySelector(".player-card-hand");state.hands[0].forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("selected",state.pendingCard===card.id);button.addEventListener("click",()=>selectPickRed(card.id));hand.append(button);});setPlayers(Array.from({length:state.total},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:`${state.hands[i].length} 張・${state.captures[i].reduce((sum,card)=>sum+pickRedValue(card),0)} 分`,color:i===0?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":state.turn===0?"輪到你了":`AI ${state.turn} 出牌`;statusEl.textContent=state.winner!==null?`${state.winner===0?"你":`AI ${state.winner}`} 以 ${state.scores[state.winner]} 分獲勝！`:state.turn===0?(state.pendingCard?"選擇發亮的桌面牌吃走。":"選擇一張手牌；可湊十時會提示目標。"):`AI ${state.turn} 正在找紅點。`;}
+function selectPickRed(cardId){if(state.turn!==0||state.winner!==null)return;const card=state.hands[0].find((item)=>item.id===cardId),matches=pickRedMatches(card,state.table);if(matches.length<=1)humanPickRed(cardId,matches[0]?.id||null);else{state.pendingCard=cardId;renderPickRed();}}
+function humanPickRed(cardId,targetId){state={...playPickRed(state,0,cardId,targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();if(state.winner===null)schedule(aiPickRed);}
+function aiPickRed(){const move=choosePickRedPlay(state,state.turn);state={...playPickRed(state,state.turn,move.cardId,move.targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();if(state.winner===null&&state.turn!==0)schedule(aiPickRed,350);}
+
+function startNinetyNine(total){state={...state,...createNinetyNineState(total),playerCount:total};rulesEl.textContent="輪流出牌且總點數不可超過 99；A 加 1/11、4 反轉、10 加減 10、J 跳過、Q 加 20、K 直接設為 99，無合法牌者淘汰。";primary.hidden=false;primary.textContent="出牌";renderNinetyNine();}
+function renderNinetyNine(){boardEl.innerHTML='<div class="card-table ninetynine-table"><div class="ninety-total"></div><div class="ninety-last"></div><div class="player-card-hand"></div></div>';boardEl.querySelector(".ninety-total").textContent=state.total;const last=boardEl.querySelector(".ninety-last");last.textContent=state.lastPlay?`${state.lastPlay.card.rank}${state.lastPlay.card.suit}`:"尚未出牌";const hand=boardEl.querySelector(".player-card-hand");state.hands[0].forEach((card)=>{const button=cardButton(card,true);const legal=legalNinetyNinePlays(state,0).some((play)=>play.cardId===card.id);button.disabled=!legal||state.turn!==0;button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{selected.clear();selected.add(card.id);renderNinetyNine();});hand.append(button);});setPlayers(Array.from({length:state.hands.length},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:state.alive[i]?`${state.hands[i].length} 張`:"已淘汰",color:i===0?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":state.turn===0?"輪到你了":`AI ${state.turn} 出牌`;statusEl.textContent=state.winner!==null?`${state.winner===0?"你":`AI ${state.winner}`} 成為最後留在牌桌上的玩家！`:state.turn===0?`目前 ${state.total} 點，選擇不超過 99 的牌。`:`AI ${state.turn} 正在控制點數。`;primary.disabled=state.turn!==0||!selected.size;}
+function humanNinetyNine(){if(state.game!=="ninetynine"||state.turn!==0||!selected.size)return;state={...playNinetyNine(state,0,[...selected][0]),game:"ninetynine",difficulty:state.difficulty,totalPlayers:state.total};selected.clear();renderNinetyNine();if(state.winner===null)schedule(aiNinetyNine);}
+function aiNinetyNine(){const move=chooseNinetyNinePlay(state,state.turn);if(move)state={...playNinetyNine(state,state.turn,move.cardId),game:"ninetynine",difficulty:state.difficulty};renderNinetyNine();if(state.winner===null&&state.turn!==0)schedule(aiNinetyNine,350);}
+
+primary.addEventListener("click",()=>{if(state?.game==="mahjong"&&state.turn<state.humans){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
+pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(state.turn!==0)return;const next=passBigTwo(state,0);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();if(state.turn!==0)schedule(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});
+document.querySelector("#casualRestart").addEventListener("click",()=>{const count=state.game==="ninetynine"?state.playerCount:state.game==="checkers"||state.game==="bigtwo"||state.game==="blackjack"||state.game==="pickred"?state.total:state.game==="mahjong"?state.humans:1;startGame(state.game,count,state.difficulty);});

@@ -18,8 +18,11 @@ const players = new Map();
 const invites = new Map();
 const games = new Map();
 const rooms = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo"]);
-const ROOM_PLAYER_LIMITS = { gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5] };
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine"]);
+const ROOM_PLAYER_LIMITS = {
+  gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5]
+};
 
 const contentTypes = {
   ".html": "text/html; charset=utf-8",

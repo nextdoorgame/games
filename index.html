@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f6f1" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=neighbor-1" />
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -50,15 +50,15 @@
           <div class="welcome platform-welcome">
             <div>
               <h1>今晚，隔壁開桌</h1>
-              <p>六款經典遊戲，和家人朋友隨時開一桌。</p>
+              <p>十二款經典遊戲，和家人朋友隨時開一桌。</p>
             </div>
             <div class="welcome-table" aria-hidden="true"><i>帥</i><span></span><b></b></div>
           </div>
 
-          <div class="section-heading"><div><h2>選擇遊戲</h2></div><p>單人練習，或邀請家人朋友連線對戰。</p></div>
+          <div class="section-heading"><div><h2>選擇遊戲</h2></div><div id="gameFilters" class="game-filters" aria-label="遊戲分類"><button class="active" data-filter="all" type="button">全部</button><button data-filter="board" type="button">棋類</button><button data-filter="card" type="button">牌類</button></div></div>
 
-          <div class="game-library six-games">
-            <article class="game-card gomoku-game-card">
+          <div class="game-library expanded-games">
+            <article class="game-card gomoku-game-card" data-category="board">
               <div class="game-card-head"><div><span class="game-emblem gomoku-emblem"><i></i><i></i></span><h3>五子棋</h3></div><p>19×19 棋盤・三級 AI・即時對戰</p></div>
               <div class="game-preview gomoku-preview" aria-hidden="true">
                 <span class="preview-stone black p1"></span><span class="preview-stone white p2"></span><span class="preview-stone black p3"></span><span class="preview-stone white p4"></span><span class="preview-stone black p5"></span>
@@ -69,7 +69,7 @@
               </div>
             </article>
 
-            <article class="game-card xiangqi-game-card">
+            <article class="game-card xiangqi-game-card" data-category="board">
               <div class="game-card-head"><div><span class="game-emblem xiangqi-emblem">帥</span><h3>中國象棋</h3></div><p>經典規則・三級 AI・即時對戰</p></div>
               <div class="game-preview xiangqi-preview" aria-hidden="true">
                 <div class="mini-river">楚河　　漢界</div><i class="mini-xq black">將</i><i class="mini-xq black horse">馬</i><i class="mini-xq red">帥</i><i class="mini-xq red cannon">炮</i>
@@ -79,29 +79,59 @@
                 <button class="secondary-button room-game-button" data-view="lobby" data-room-game="xiangqi" aria-label="前往中國象棋房間大廳" type="button">房間大廳</button>
               </div>
             </article>
-            <article class="game-card reversi-game-card">
+            <article class="game-card reversi-game-card" data-category="board">
               <div class="game-card-head"><div><span class="game-emblem reversi-emblem">●○</span><h3>黑白棋</h3></div><p>1–2 人・翻子規則</p></div>
               <div class="game-preview reversi-preview" aria-hidden="true"><i class="disc dark d1"></i><i class="disc light d2"></i><i class="disc dark d3"></i><i class="disc light d4"></i></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="reversi" aria-label="開始黑白棋單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="reversi" aria-label="前往黑白棋房間大廳" type="button">房間大廳</button></div>
             </article>
-            <article class="game-card checkers-game-card">
-              <div class="game-card-head"><div><span class="game-emblem">✦</span><h3>中國跳棋</h3></div><p>2–3 人・連續跳躍</p></div>
+            <article class="game-card checkers-game-card" data-category="board">
+              <div class="game-card-head"><div><span class="game-emblem">✦</span><h3>中國跳棋</h3></div><p>2–3 人・AI 補位</p></div>
               <div class="game-preview checkers-preview" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="checkers" aria-label="開始中國跳棋本機多人遊戲" type="button">本機遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="checkers" aria-label="前往中國跳棋房間大廳" type="button">房間大廳</button></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="checkers" aria-label="開始中國跳棋 AI 遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="checkers" aria-label="前往中國跳棋房間大廳" type="button">房間大廳</button></div>
             </article>
-            <article class="game-card mahjong-game-card">
+            <article class="game-card mahjong-game-card" data-category="card">
               <div class="game-card-head"><div><span class="game-emblem">發</span><h3>麻將</h3></div><p>1–4 人・AI 補位</p></div>
               <div class="game-preview mahjong-preview" aria-hidden="true"><i>一萬</i><i>發</i><i>中</i><i>白</i></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="mahjong" aria-label="開始麻將本機多人遊戲" type="button">本機遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="mahjong" aria-label="前往麻將房間大廳" type="button">房間大廳</button></div>
             </article>
-            <article class="game-card bigtwo-game-card">
+            <article class="game-card bigtwo-game-card" data-category="card">
               <div class="game-card-head"><div><span class="game-emblem">2♠</span><h3>大老二</h3></div><p>3–5 人・AI 補位</p></div>
               <div class="game-preview bigtwo-preview" aria-hidden="true"><i>3♦</i><i>J♣</i><i>Q♥</i><i>2♠</i></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="bigtwo" aria-label="開始大老二單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="bigtwo" aria-label="前往大老二房間大廳" type="button">房間大廳</button></div>
             </article>
+            <article class="game-card banqi-game-card" data-category="board">
+              <div class="game-card-head"><div><span class="game-emblem">暗</span><h3>暗棋</h3></div><p>翻棋吃子・三級 AI</p></div>
+              <div class="game-preview banqi-preview" aria-hidden="true"><i>？</i><i>將</i><i>？</i><i>炮</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="banqi" aria-label="開始暗棋單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="banqi" aria-label="前往暗棋房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card chess-game-card" data-category="board">
+              <div class="game-card-head"><div><span class="game-emblem">♔</span><h3>西洋棋</h3></div><p>完整走法・三級 AI</p></div>
+              <div class="game-preview chess-preview" aria-hidden="true"><i>♜</i><i>♞</i><i>♙</i><i>♔</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="chess" aria-label="開始西洋棋單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="chess" aria-label="前往西洋棋房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card go-game-card" data-category="board">
+              <div class="game-card-head"><div><span class="game-emblem">圍</span><h3>圍棋</h3></div><p>13 路棋盤・提子與劫</p></div>
+              <div class="game-preview go-preview" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="go" aria-label="開始圍棋單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="go" aria-label="前往圍棋房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card blackjack-game-card" data-category="card">
+              <div class="game-card-head"><div><span class="game-emblem">21</span><h3>二十一點</h3></div><p>3–5 人・AI 補位</p></div>
+              <div class="game-preview card-fan-preview" aria-hidden="true"><i>A♠</i><i>K♥</i><i>7♣</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="blackjack" aria-label="開始二十一點單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="blackjack" aria-label="前往二十一點房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card pickred-game-card" data-category="card">
+              <div class="game-card-head"><div><span class="game-emblem">♥</span><h3>撿紅點</h3></div><p>3–5 人・AI 補位</p></div>
+              <div class="game-preview card-fan-preview pickred-preview" aria-hidden="true"><i>3♦</i><i>7♥</i><i>Q♦</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="pickred" aria-label="開始撿紅點單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="pickred" aria-label="前往撿紅點房間大廳" type="button">房間大廳</button></div>
+            </article>
+            <article class="game-card ninetynine-game-card" data-category="card">
+              <div class="game-card-head"><div><span class="game-emblem">99</span><h3>九九</h3></div><p>3–5 人・AI 補位</p></div>
+              <div class="game-preview card-fan-preview ninetynine-preview" aria-hidden="true"><i>4♣</i><i>10♦</i><i>K♠</i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="ninetynine" aria-label="開始九九單人遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="ninetynine" aria-label="前往九九房間大廳" type="button">房間大廳</button></div>
+            </article>
           </div>
 
-          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；麻將與大老二會自動由 AI 補滿空位。</p>
+          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；多人牌局與中國跳棋會自動由 AI 補滿空位。</p>
         </section>
 
         <section id="lobbyView" class="view">
@@ -245,7 +275,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-1"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-1"></script>
+    <script type="module" src="./src/app.js?v=neighbor-2"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-2"></script>
   </body>
 </html>
