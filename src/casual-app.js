@@ -7,6 +7,8 @@ import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseCh
 import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
 import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
+import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-4";
+import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-4";
 
 const GAMES = {
   gomoku: { name: "五子棋", players: [2], mode: "19×19 棋盤" },
@@ -21,7 +23,9 @@ const GAMES = {
   blackjack: { name: "二十一點", players: [3, 4, 5], mode: "莊家 17 停牌" },
   pickred: { name: "撿紅點", players: [3, 4, 5], mode: "湊十吃牌" },
   ninetynine: { name: "九九", players: [3, 4, 5], mode: "99 點淘汰" },
-  tetris: { name: "俄羅斯方塊", players: [2], mode: "雙人同步分屏" }
+  tetris: { name: "俄羅斯方塊", players: [2], mode: "雙人同步分屏" },
+  volleyball: { name: "皮卡丘排球", players: [2], mode: "像素沙灘對戰" },
+  racing: { name: "賽車障礙", players: [2], mode: "雙車障礙競速" }
 };
 
 const tabs = document.querySelector("#roomGameTabs");
@@ -45,7 +49,9 @@ const primary = document.querySelector("#casualPrimaryAction");
 const pass = document.querySelector("#casualPass");
 const difficultyFieldset = document.querySelector("#casualDifficultyFieldset");
 const speedFieldset = document.querySelector("#casualSpeedFieldset");
-let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisSyncTimer = null, selected = new Set();
+let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, selected = new Set();
+const arcadeKeys = Object.create(null);
+const arcadeTouch = Object.create(null);
 const ROOM_API = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
 const roomPlayerId = sessionStorage.getItem("gomoku-player-id") || crypto.randomUUID();
 const roomPlayerName = () => localStorage.getItem("gomoku-player-name") || "隔壁棋手";
@@ -98,7 +104,7 @@ async function renderRooms() {
         let joinedRoom = room;
         if (ROOM_API && !room.id.startsWith("local-")) joinedRoom = await roomRequest(`/api/rooms/${room.id}/join`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, playerName: roomPlayerName() }) });
         if (["gomoku", "xiangqi"].includes(roomGame)) { document.querySelector(`.game-solo-button[data-game-type="${roomGame}"]`)?.click(); toast("已加入房間，可設定棋局後開始"); }
-        else { pendingRoom = roomGame === "tetris" ? joinedRoom : null; openCasualSetup(roomGame); }
+        else { pendingRoom = ["tetris", "volleyball", "racing"].includes(roomGame) ? joinedRoom : null; openCasualSetup(roomGame); }
       } catch (error) { toast(error.message); }
     });
     return row;
@@ -108,33 +114,33 @@ async function renderRooms() {
 tabs.replaceChildren(...Object.entries(GAMES).map(([key, game]) => { const button = document.createElement("button"); button.type = "button"; button.dataset.game = key; button.textContent = game.name; button.addEventListener("click", () => setRoomGame(key)); return button; }));
 document.querySelectorAll(".room-game-button").forEach((button) => button.addEventListener("click", () => setRoomGame(button.dataset.roomGame)));
 document.querySelector("#createRoom").addEventListener("click", async () => {
-  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value);
+  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = ["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame) && roomAi.checked;
   try {
     let createdRoom = null;
-    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill: roomAi.checked, hostId: roomPlayerId, hostName: roomPlayerName() }) });
-    else { const rooms = storedRooms(); rooms.push({ id: `local-${crypto.randomUUID()}`, game: roomGame, name, current: 1, max, ai: roomAi.checked, status: "等待中" }); saveRooms(rooms); }
+    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostName: roomPlayerName() }) });
+    else { const rooms = storedRooms(); rooms.push({ id: `local-${crypto.randomUUID()}`, game: roomGame, name, current: 1, max, ai: aiFill, status: "等待中" }); saveRooms(rooms); }
     roomName.value = ""; await renderRooms(); toast(`已建立「${name}」`);
-    if (roomGame === "tetris" && createdRoom) { pendingRoom = createdRoom; openCasualSetup("tetris"); }
+    if (["tetris", "volleyball", "racing"].includes(roomGame) && createdRoom) { pendingRoom = createdRoom; openCasualSetup(roomGame); }
   } catch (error) { toast(error.message); }
 });
 setRoomGame("gomoku");
 window.setInterval(() => { if (document.querySelector("#lobbyView").classList.contains("active")) renderRooms(); }, 3000);
 
 function openCasualSetup(game) {
-  if (game !== "tetris") pendingRoom = null;
+  if (!["tetris", "volleyball", "racing"].includes(game)) pendingRoom = null;
   pendingGame = game; const meta = GAMES[game]; setupTitle.textContent = `設定${meta.name}遊戲`;
   const descriptions = {
     reversi: "你執黑先手，依難度挑戰 AI。", checkers: "選擇 2 或 3 人桌，其餘座位由 AI 補齊。", mahjong: "選擇真人玩家數，未坐滿的四方座位由 AI 補位。", bigtwo: "選擇 3～5 人牌局，其餘對手由 AI 補位。",
-    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。"
+    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。"
   };
   setupDescription.textContent = descriptions[game] || "選擇遊戲人數與 AI 難度。";
-  difficultyFieldset.hidden = game === "tetris";
+  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing"].includes(game);
   speedFieldset.hidden = game !== "tetris";
-  const options = game === "tetris" ? [pendingRoom ? 2 : 1] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
+  const options = game === "tetris" ? [pendingRoom ? 2 : 1] : ["volleyball", "racing"].includes(game) ? (pendingRoom ? [2] : [1, 2]) : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
   playerOptions.replaceChildren(...options.map((count, index) => {
     const label = document.createElement("label");
-    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
-    const detail = game === "tetris" ? (pendingRoom ? "分割畫面同步對手進度" : "練習消行與速度控制") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
+    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["volleyball", "racing"].includes(game) ? (pendingRoom ? "2 人連線對戰" : count === 1 ? "單人＋AI" : "本機雙人") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
+    const detail = game === "tetris" ? (pendingRoom ? "分割畫面同步對手進度" : "練習消行與速度控制") : ["volleyball", "racing"].includes(game) ? (pendingRoom ? "同步按鍵與遊戲狀態" : count === 1 ? "AI 會自動移動與進攻" : "玩家 2 使用 W／A／S／D") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
     label.innerHTML = `<input type="radio" name="casualPlayers" value="${count}" ${index === 0 ? "checked" : ""}><span><b>${title}</b><small>${detail}</small></span>`;
     return label;
   }));
@@ -146,10 +152,10 @@ document.querySelector("#startCasual").addEventListener("click", () => { const f
 function setPlayers(items, active) {
   playersEl.replaceChildren(...items.map((item, index) => { const row = document.createElement("div"); row.className = `casual-player${index === active ? " active" : ""}`; row.style.setProperty("--player-color", item.color || "#777"); row.innerHTML = "<b></b><span></span>"; row.querySelector("b").textContent = item.name; row.querySelector("span").textContent = item.detail || ""; return row; }));
 }
-function stopTetrisLoops() { clearInterval(tetrisTimer); clearInterval(tetrisSyncTimer); tetrisTimer = null; tetrisSyncTimer = null; }
+function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; arcadeFrame = null; }
 function startGame(game, players, difficulty, speed = "normal", room = null) {
-  clearTimeout(aiTimer); stopTetrisLoops(); selected.clear(); state = { game, players, difficulty, speed, room }; showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `雙人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
-  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(players), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room) })[game]?.();
+  clearTimeout(aiTimer); stopGameLoops(); selected.clear(); state = { game, players, difficulty, speed, room }; showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `雙人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
+  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(players), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room) })[game]?.();
 }
 
 function startReversi() { state = { ...state, board: createReversiBoard(), turn: DARK, finished: false }; rulesEl.textContent = "8×8 棋盤，夾住對方棋子即可翻面；雙方都無合法位置時，以棋子較多者獲勝。"; renderReversi(); }
@@ -175,7 +181,7 @@ function aiChecker() { const move = chooseCheckerMove(state.board, state.turn); 
 function startBanqi() { state = { ...state, ...createBanqiState(), selected: null, legal: [] }; rulesEl.textContent = "4×8 棋盤，第一枚翻棋決定陣營；一般棋子走一格，炮隔一枚棋子吃子，兵可吃將而將不能吃兵。"; renderBanqi(); }
 function renderBanqi() {
   boardEl.innerHTML = '<div class="banqi-board"></div>'; const grid = boardEl.firstElementChild;
-  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.type = "button"; button.className = `banqi-cell${state.selected === index ? " selected" : ""}${state.legal.includes(index) ? " legal" : ""}${piece?.color === "red" && piece.faceUp ? " red" : ""}`; button.textContent = piece ? piece.faceUp ? piece.name : "暗" : ""; button.addEventListener("click", () => clickBanqi(index)); grid.append(button); });
+  state.board.forEach((piece, index) => { const button = document.createElement("button"); button.type = "button"; button.className = `banqi-cell${state.selected === index ? " selected" : ""}${state.legal.includes(index) ? " legal" : ""}${piece?.color === "red" && piece.faceUp ? " red" : ""}${piece && !piece.faceUp ? " facedown" : ""}`; if (piece?.faceUp) button.textContent = piece.name; else if (piece) { const back = document.createElement("i"); back.className = "banqi-back-pattern"; button.append(back); button.ariaLabel = "未翻開的暗棋"; } button.addEventListener("click", () => clickBanqi(index)); grid.append(button); });
   setPlayers([{ name: "你", detail: state.playerColors[0] === "red" ? "紅方" : state.playerColors[0] === "black" ? "黑方" : "待翻棋" , color: "#b94136" }, { name: "AI", detail: state.playerColors[1] === "red" ? "紅方" : state.playerColors[1] === "black" ? "黑方" : "待翻棋", color: "#222" }], state.turn); turnEl.textContent = state.winner !== null ? "本局結束" : state.turn === 0 ? "輪到你了" : "AI 思考中"; statusEl.textContent = state.winner !== null ? `${state.winner === 0 ? "你" : "AI"} 吃完對方棋子，獲得勝利！` : state.turn === 0 ? "翻開暗棋，或選擇己方棋子移動。" : "AI 正在選擇翻棋或吃子。";
 }
 function clickBanqi(index) { if (state.turn !== 0 || state.winner !== null) return; const piece = state.board[index], actions = banqiActions(state); const flip = actions.find((action) => action.type === "flip" && action.from === index); if (flip) { state = { ...applyBanqiAction(state, flip), game: "banqi", difficulty: state.difficulty }; renderBanqi(); if (state.winner === null) schedule(aiBanqi); return; } if (state.legal.includes(index)) { state = { ...applyBanqiAction(state, { type: "move", from: state.selected, to: index }), game: "banqi", difficulty: state.difficulty, selected: null, legal: [] }; renderBanqi(); if (state.winner === null) schedule(aiBanqi); return; } if (piece?.faceUp && piece.color === state.playerColors[0]) { state.selected = index; state.legal = actions.filter((action) => action.type === "move" && action.from === index).map((action) => action.to); } else { state.selected = null; state.legal = []; } renderBanqi(); }
@@ -203,7 +209,9 @@ function passGo() { if (state.turn !== 1 || state.winner) return; state = { ...a
 
 function startMahjong(humans) { state = { ...state, ...dealMahjong(4), humans }; rulesEl.textContent = "家庭自摸版：使用 136 張牌，每家 13 張，湊成四組順子／刻子加一對將即可胡牌；本版不含花牌與搶碰吃。"; primary.hidden = false; primary.textContent = "自摸檢查"; renderMahjong(); }
 function renderMahjong() { const current = state.turn; boardEl.innerHTML = '<div class="mahjong-table"><div class="mahjong-opponents"></div><div class="mahjong-discards"><div class="wall-count"></div></div><div class="mahjong-hand"></div></div>'; const seats = boardEl.querySelector(".mahjong-opponents"); for (let i = 1; i < 4; i += 1) { const seat = document.createElement("div"); seat.className = "mahjong-seat"; seat.textContent = `${i < state.humans ? `玩家 ${i + 1}` : `AI ${i}`}・${state.hands[i].length} 張`; seats.append(seat); } const discardArea = boardEl.querySelector(".mahjong-discards"); discardArea.querySelector(".wall-count").textContent = `牌牆剩餘 ${state.wall.length} 張`; state.discards.flat().slice(-28).forEach((tile) => discardArea.append(tileButton(tile, false))); const hand = boardEl.querySelector(".mahjong-hand"); const showHand = current < state.humans ? state.hands[current] : state.hands[0]; showHand.forEach((tile, index) => { const button = tileButton(tile, true); button.addEventListener("click", () => humanMahjongDiscard(index)); hand.append(button); }); setPlayers(Array.from({ length: 4 }, (_, i) => ({ name: i < state.humans ? `玩家 ${i + 1}` : `AI ${i - state.humans + 1}`, detail: `${state.hands[i].length} 張`, color: ["#b94136", "#315b88", "#d5a72d", "#315b49"][i] })), current); turnEl.textContent = state.winner !== null ? "本局結束" : current < state.humans ? `玩家 ${current + 1} 出牌` : `AI ${current - state.humans + 1} 思考`; statusEl.textContent = state.winner !== null ? `${state.winner < state.humans ? `玩家 ${state.winner + 1}` : `AI ${state.winner - state.humans + 1}`} 自摸胡牌！` : current < state.humans ? "選擇一張牌打出。" : "AI 正在整理牌型。"; }
-function tileButton(tile, button) { const el = document.createElement(button ? "button" : "i"); el.className = `mahjong-tile${tile.suit === "字" ? " honor" : ""}`; el.textContent = tile.label; return el; }
+const MAHJONG_HONORS = { 東: 0x1f000, 南: 0x1f001, 西: 0x1f002, 北: 0x1f003, 中: 0x1f004, 發: 0x1f005, 白: 0x1f006 };
+function mahjongGlyph(tile) { const start = tile.suit === "萬" ? 0x1f007 : tile.suit === "條" ? 0x1f010 : tile.suit === "筒" ? 0x1f019 : MAHJONG_HONORS[tile.label]; return String.fromCodePoint(start + (tile.suit === "字" ? 0 : tile.rank - 1)); }
+function tileButton(tile, button) { const el = document.createElement(button ? "button" : "i"); el.className = `mahjong-tile suit-${tile.suit}${tile.suit === "字" ? " honor" : ""}`; const face = document.createElement("span"); face.className = "mahjong-glyph"; face.textContent = mahjongGlyph(tile); const caption = document.createElement("small"); caption.textContent = tile.label; el.append(face, caption); el.ariaLabel = `${tile.label}麻將牌`; return el; }
 function humanMahjongDiscard(index) { if (state.winner !== null || state.turn >= state.humans) return; state = discardMahjong(state, state.turn, index); advanceMahjong(); }
 function advanceMahjong() { if (!state.wall.length) { statusEl.textContent = "牌牆用盡，本局流局。"; return; } state = drawMahjong(state, state.turn); renderMahjong(); if (state.winner !== null) return; if (state.turn >= state.humans) schedule(() => { state = discardMahjong(state, state.turn, chooseMahjongDiscard(state.hands[state.turn])); advanceMahjong(); }, 430); }
 
@@ -317,6 +325,82 @@ window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") { event.preventDefault(); state.engine.paused = !state.engine.paused; renderTetris(); }
 });
 
-primary.addEventListener("click",()=>{if(state?.game==="tetris"){state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&state.turn<state.humans){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
+const isArcadeGame = (game) => game === "volleyball" || game === "racing";
+function arcadeInput(player = 0) {
+  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeKeys.ArrowDown || arcadeTouch.action };
+  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyS };
+}
+
+function arcadeCanvasDraw() {
+  const canvas = boardEl.querySelector("#arcadeCanvas");
+  if (!canvas || !state?.engine) return;
+  if (state.game === "volleyball") drawVolleyball(canvas, state.engine); else drawRacing(canvas, state.engine);
+}
+
+function renderArcadeStatus() {
+  if (!isArcadeGame(state?.game)) return;
+  const [first, second] = state.engine.players;
+  const opponent = state.room?.players?.find((player) => player.id !== roomPlayerId);
+  const names = state.room ? [state.room.players[0]?.name || "房主", state.room.players[1]?.name || "等待對手"] : ["玩家 1", state.players === 1 ? "AI" : "玩家 2"];
+  const detail = state.game === "volleyball" ? [`${first.score} 分`, `${second.score} 分`] : [`${first.score} 分・❤ ${first.lives}`, `${second.score} 分・❤ ${second.lives}`];
+  setPlayers([{ name: names[0], detail: detail[0], color: "#2e72d2" }, { name: names[1], detail: detail[1], color: "#d94b3c" }], -1);
+  turnEl.textContent = state.engine.winner !== null ? "本局結束" : state.arcadePaused ? "遊戲暫停" : state.room && !opponent ? "等待對手" : "比賽進行中";
+  if (state.engine.winner !== null) statusEl.textContent = state.engine.winner === -1 ? "本局平手，重新開始再比一次！" : `${state.engine.winner === 0 ? names[0] : names[1]} 獲勝！`;
+  else if (state.room && !opponent) statusEl.textContent = "等待第二位玩家加入；目前由 AI 陪你暖身。";
+  else statusEl.textContent = state.game === "volleyball" ? "先得到 7 分獲勝；靠近球時按 ↓ 或空白鍵扣球。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
+}
+
+function arcadeLoop() {
+  if (!isArcadeGame(state?.game)) return;
+  if (!state.arcadePaused && (!state.room || state.onlineRole === "host")) {
+    const useAi = state.room ? state.room.players.length < 2 : state.players === 1;
+    if (state.game === "volleyball") updateVolleyball(state.engine, arcadeInput(0), state.room ? state.remoteInput : arcadeInput(1), useAi);
+    else updateRacing(state.engine, arcadeInput(0), state.room ? state.remoteInput : arcadeInput(1), useAi);
+  }
+  arcadeCanvasDraw();
+  if (state.engine.frame % 10 === 0 || state.engine.winner !== null) renderArcadeStatus();
+  arcadeFrame = requestAnimationFrame(arcadeLoop);
+}
+
+async function syncArcadeRoom() {
+  if (!isArcadeGame(state?.game) || !state.room || !ROOM_API) return;
+  try {
+    const payload = { playerId: roomPlayerId, input: arcadeInput(0) };
+    if (state.onlineRole === "host") payload.state = state.engine;
+    const data = await roomRequest(`/api/rooms/${state.room.id}/arcade`, { method: "POST", body: JSON.stringify(payload) });
+    if (!isArcadeGame(state?.game) || state.room?.id !== data.room.id) return;
+    state.room = data.room;
+    const remote = data.inputs.find((item) => item.playerId !== roomPlayerId);
+    state.remoteInput = remote?.input || {};
+    if (state.onlineRole === "guest" && data.snapshot) state.engine = data.snapshot;
+    state.syncWarningShown = false; renderArcadeStatus();
+  } catch (error) {
+    if (!state.syncWarningShown) { state.syncWarningShown = true; toast(`對戰同步暫停：${error.message}`); }
+  }
+}
+
+function startArcadeGame(game, players, room) {
+  state = { ...state, players, room, engine: game === "volleyball" ? createVolleyballState() : createRacingState(), arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, syncWarningShown: false };
+  boardEl.innerHTML = '<div class="arcade-stage"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls"><button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">動作</button></div></div>';
+  boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
+    const key = button.dataset.arcade;
+    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; };
+    const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; };
+    button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
+  });
+  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，↑ 跳躍，↓／空白鍵扣球；本機玩家 2：A、D 移動，W 跳躍，S 扣球。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。";
+  primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
+  renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
+  if (room && ROOM_API) { syncArcadeRoom(); arcadeSyncTimer = setInterval(syncArcadeRoom, 160); }
+}
+
+window.addEventListener("keydown", (event) => {
+  if (!isArcadeGame(state?.game) || !document.querySelector("#casualView").classList.contains("active") || setup.open) return;
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS"].includes(event.code)) { event.preventDefault(); arcadeKeys[event.code] = true; }
+  if (event.code === "KeyP") { event.preventDefault(); state.arcadePaused = !state.arcadePaused; primary.textContent = state.arcadePaused ? "繼續遊戲" : "暫停遊戲"; renderArcadeStatus(); }
+});
+window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; } });
+
+primary.addEventListener("click",()=>{if(isArcadeGame(state?.game)){state.arcadePaused=!state.arcadePaused;primary.textContent=state.arcadePaused?"繼續遊戲":"暫停遊戲";renderArcadeStatus();}else if(state?.game==="tetris"){state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&state.turn<state.humans){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
 pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(state.turn!==0)return;const next=passBigTwo(state,0);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();if(state.turn!==0)schedule(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});
-document.querySelector("#casualRestart").addEventListener("click",()=>{const count=state.game==="tetris"?state.players:state.game==="ninetynine"?state.playerCount:state.game==="checkers"||state.game==="bigtwo"||state.game==="blackjack"||state.game==="pickred"?state.total:state.game==="mahjong"?state.humans:1;startGame(state.game,count,state.difficulty,state.speed,state.room);});
+document.querySelector("#casualRestart").addEventListener("click",()=>{const count=state.game==="tetris"||isArcadeGame(state.game)?state.players:state.game==="ninetynine"?state.playerCount:state.game==="checkers"||state.game==="bigtwo"||state.game==="blackjack"||state.game==="pickred"?state.total:state.game==="mahjong"?state.humans:1;startGame(state.game,count,state.difficulty,state.speed,state.room);});

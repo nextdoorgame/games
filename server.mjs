@@ -18,10 +18,10 @@ const players = new Map();
 const invites = new Map();
 const games = new Map();
 const rooms = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris"]);
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris", "volleyball", "racing"]);
 const ROOM_PLAYER_LIMITS = {
   gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
-  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2]
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2], volleyball: [2], racing: [2]
 };
 
 const contentTypes = {
@@ -96,6 +96,18 @@ function safeTetrisSnapshot(value) {
     paused: Boolean(value.paused),
     updatedAt: Date.now()
   };
+}
+
+function safeArcadeInput(value) {
+  return { left: Boolean(value?.left), right: Boolean(value?.right), up: Boolean(value?.up), down: Boolean(value?.down), action: Boolean(value?.action) };
+}
+
+function safeArcadeSnapshot(value, gameType) {
+  if (!value || value.type !== gameType || !Array.isArray(value.players) || value.players.length !== 2) return null;
+  try {
+    if (JSON.stringify(value).length > 15_000) return null;
+    return structuredClone(value);
+  } catch { return null; }
 }
 
 function activeGameFor(playerId) {
@@ -243,7 +255,7 @@ async function handleApi(req, res, url) {
     const hostId = String(body.hostId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, createdAt: Date.now(), updatedAt: Date.now() };
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill: Boolean(body.aiFill), status: "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
   }
@@ -278,6 +290,24 @@ async function handleApi(req, res, url) {
     room.snapshots.set(playerId, snapshot);
     room.updatedAt = Date.now();
     return sendJson(res, 200, { room: publicRoom(room), snapshots: [...room.snapshots.entries()].map(([id, state]) => ({ playerId: id, state })) });
+  }
+
+  const arcadeRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/arcade$/);
+  if (req.method === "POST" && arcadeRoomMatch) {
+    const room = rooms.get(arcadeRoomMatch[1]);
+    if (!room || !["volleyball", "racing"].includes(room.gameType)) return sendJson(res, 404, { error: "街機遊戲房間已關閉" });
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
+    room.arcadeInputs ||= new Map();
+    room.arcadeInputs.set(playerId, safeArcadeInput(body.input));
+    if (room.players[0]?.id === playerId && body.state) {
+      const snapshot = safeArcadeSnapshot(body.state, room.gameType);
+      if (!snapshot) return sendJson(res, 400, { error: "遊戲狀態格式不正確" });
+      room.arcadeSnapshot = snapshot;
+    }
+    room.updatedAt = Date.now();
+    return sendJson(res, 200, { room: publicRoom(room), snapshot: room.arcadeSnapshot, inputs: [...room.arcadeInputs.entries()].map(([id, input]) => ({ playerId: id, input })) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/lobby") {

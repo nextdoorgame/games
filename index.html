@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f6f1" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=neighbor-3" />
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-4" />
   </head>
   <body>
     <div class="app-shell">
@@ -50,7 +50,7 @@
           <div class="welcome platform-welcome">
             <div>
               <h1>今晚，隔壁開桌</h1>
-              <p>十三款經典遊戲，和家人朋友隨時開一桌。</p>
+              <p>十五款經典遊戲，和家人朋友隨時開一桌。</p>
             </div>
             <div class="welcome-table" aria-hidden="true"><i>帥</i><span></span><b></b></div>
           </div>
@@ -133,6 +133,16 @@
               <div class="game-card-head"><div><span class="game-emblem">▦</span><h3>俄羅斯方塊</h3></div><p>速度可調・雙人同步分屏</p></div>
               <div class="game-preview tetris-preview" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="tetris" aria-label="開始俄羅斯方塊遊戲" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="tetris" aria-label="前往俄羅斯方塊房間大廳" type="button">雙人房間</button></div>
+            </article>
+            <article class="game-card volleyball-game-card" data-category="arcade">
+              <div class="game-card-head"><div><span class="game-emblem">⚡</span><h3>皮卡丘排球</h3></div><p>單人 AI・本機／連線雙人</p></div>
+              <div class="game-preview volleyball-preview" aria-hidden="true"><i class="volley-mouse left"></i><span class="volley-net"></span><b class="volley-ball"></b><i class="volley-mouse right"></i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="volleyball" aria-label="開始皮卡丘排球遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="volleyball" aria-label="前往皮卡丘排球房間大廳" type="button">雙人房間</button></div>
+            </article>
+            <article class="game-card racing-game-card" data-category="arcade">
+              <div class="game-card-head"><div><span class="game-emblem">🏁</span><h3>賽車障礙</h3></div><p>單人 AI・雙人障礙競速</p></div>
+              <div class="game-preview racing-preview" aria-hidden="true"><span class="preview-car blue"></span><i></i><span class="preview-car red"></span><b></b><em></em></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="racing" aria-label="開始賽車障礙遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="racing" aria-label="前往賽車障礙房間大廳" type="button">雙人房間</button></div>
             </article>
           </div>
 
@@ -281,6 +291,6 @@
 
     <script src="./config.js"></script>
     <script type="module" src="./src/app.js?v=neighbor-2"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-3"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-4"></script>
   </body>
 </html>
