@@ -1,4 +1,4 @@
-const SIZE = 15;
+const SIZE = 19;
 const RAPFI_BASE = new URL("../vendor/rapfi/", self.location.href).href;
 const RAPFI_SCRIPT = new URL("rapfi-single-simd128.js", RAPFI_BASE).href;
 
@@ -72,7 +72,7 @@ async function searchWithRapfi(board, difficulty) {
   const started = performance.now();
   searchStats = {};
 
-  engine.sendCommand("START 15");
+  engine.sendCommand(`START ${SIZE}`);
   engine.sendCommand("RELOADCONFIG config.toml");
   engine.sendCommand("INFO RULE 0");
   engine.sendCommand("INFO THREAD_NUM 1");

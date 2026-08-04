@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 
 const defaultRoot = process.cwd();
-const BOARD_SIZE = 15;
+const BOARD_SIZE = 19;
 const BLACK = 1;
 const WHITE = 2;
 const PLAYER_TTL = 10_000;
@@ -131,6 +131,7 @@ export function applyExpiredTurn(game, now = Date.now(), random = Math.random) {
 function publicGame(game) {
   return {
     id: game.id,
+    boardSize: BOARD_SIZE,
     board: game.board,
     moves: game.moves,
     players: game.players,

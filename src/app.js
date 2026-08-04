@@ -1,7 +1,7 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
 import { chooseAiMove } from "./ai.js";
 
-const SIZE = 15;
+const SIZE = 19;
 const BLACK = 1;
 const WHITE = 2;
 const EMPTY = 0;

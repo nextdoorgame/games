@@ -1,4 +1,4 @@
-const SIZE = 15;
+const SIZE = 19;
 const EMPTY = 0;
 const WIN_SCORE = 100_000_000;
 const DIRECTIONS = [[1, 0], [0, 1], [1, 1], [1, -1]];
@@ -85,8 +85,9 @@ function directionalPotential(board, index, color) {
     const weights = [0, 3, 20, 180, 3500, WIN_SCORE];
     total += weights[Math.min(count, 5)] * (open === 2 ? 2.1 : open === 1 ? 1 : .15);
   }
-  const centerDistance = Math.abs(row - 7) + Math.abs(col - 7);
-  return total + Math.max(0, 14 - centerDistance) * .45;
+  const center = (SIZE - 1) / 2;
+  const centerDistance = Math.abs(row - center) + Math.abs(col - center);
+  return total + Math.max(0, SIZE - 1 - centerDistance) * .45;
 }
 
 function immediateWinningMoves(board, color, candidates = nearbyCandidates(board)) {
@@ -101,7 +102,8 @@ function immediateWinningMoves(board, color, candidates = nearbyCandidates(board
 }
 
 function centerTieBreak(a, b) {
-  const distance = (index) => Math.abs(Math.floor(index / SIZE) - 7) + Math.abs((index % SIZE) - 7);
+  const center = (SIZE - 1) / 2;
+  const distance = (index) => Math.abs(Math.floor(index / SIZE) - center) + Math.abs((index % SIZE) - center);
   return distance(a.index) - distance(b.index) || a.index - b.index;
 }
 
