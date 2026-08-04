@@ -9,7 +9,11 @@ const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
 const BLACK = 1;
 const WHITE = 2;
-const PLAYER_TTL = 10_000;
+// Background tabs and mobile browsers throttle timers aggressively. Keep players
+// visible long enough for an invitation to be accepted even when the lobby tab
+// is not currently focused.
+const PLAYER_TTL = 60_000;
+const INVITE_TTL = 5 * 60_000;
 const TURN_TIME_OPTIONS = new Set([1, 3, 5, 10]);
 const MAX_CHAT_LENGTH = 200;
 const MAX_CHAT_MESSAGES = 100;
@@ -72,7 +76,7 @@ function cleanupLobby() {
   for (const [id, player] of players) {
     if (player.seenAt < cutoff) players.delete(id);
   }
-  const inviteCutoff = Date.now() - 60_000;
+  const inviteCutoff = Date.now() - INVITE_TTL;
   for (const [id, invite] of invites) {
     if (invite.createdAt < inviteCutoff || invite.status === "declined") invites.delete(id);
   }
@@ -349,8 +353,12 @@ async function handleApi(req, res, url) {
   if (req.method === "POST" && url.pathname === "/api/invite/respond") {
     const body = await readJson(req);
     const invite = invites.get(body.inviteId);
-    if (!invite || invite.status !== "pending") return sendJson(res, 404, { error: "邀請已失效" });
+    if (!invite) return sendJson(res, 404, { error: "邀請已失效" });
     if (invite.toId !== body.playerId) return sendJson(res, 403, { error: "無法回覆這個邀請" });
+    if (invite.status === "accepted" && invite.gameId && games.has(invite.gameId)) {
+      return sendJson(res, 200, { accepted: true, gameId: invite.gameId });
+    }
+    if (invite.status !== "pending") return sendJson(res, 404, { error: "邀請已失效" });
     if (!body.accept) {
       invite.status = "declined";
       return sendJson(res, 200, { accepted: false });

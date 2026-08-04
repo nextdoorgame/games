@@ -31,6 +31,9 @@ const GAMES = {
 const tabs = document.querySelector("#roomGameTabs");
 const roomList = document.querySelector("#roomList");
 const roomTitle = document.querySelector("#roomLobbyTitle");
+const roomDescription = document.querySelector("#roomLobbyDescription");
+const roomLobbyLayout = document.querySelector("#roomLobbyLayout");
+const duelInviteLobby = document.querySelector("#duelInviteLobby");
 const roomCount = document.querySelector("#roomPlayerCount");
 const roomName = document.querySelector("#roomNameInput");
 const roomAi = document.querySelector("#roomAiFill");
@@ -73,11 +76,15 @@ document.querySelectorAll("#gameFilters button").forEach((button) => button.addE
 
 function setRoomGame(game) {
   roomGame = GAMES[game] ? game : "gomoku";
+  const usesDirectInvite = ["gomoku", "xiangqi"].includes(roomGame);
   roomTitle.textContent = `${GAMES[roomGame].name}・房間大廳`;
+  roomDescription.textContent = usesDirectInvite ? "選擇在線玩家，設定賽制後送出一對一邀請。" : "選擇空桌加入，或建立一個新的遊戲房間。";
+  duelInviteLobby.hidden = !usesDirectInvite;
+  roomLobbyLayout.hidden = usesDirectInvite;
   tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.game === roomGame));
   roomCount.replaceChildren(...GAMES[roomGame].players.map((count) => { const option = document.createElement("option"); option.value = count; option.textContent = `${count} 人`; return option; }));
   roomAi.closest("label").hidden = !["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame);
-  renderRooms();
+  if (!usesDirectInvite) renderRooms();
 }
 async function roomRequest(path, options = {}) {
   const response = await fetch(`${ROOM_API}${path}`, { ...options, headers: { "content-type": "application/json" } });

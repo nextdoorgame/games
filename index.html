@@ -151,15 +151,25 @@
 
         <section id="lobbyView" class="view">
           <div class="page-heading">
-            <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p>每款遊戲都有獨立房間，選擇空桌加入或建立新房間。</p></div>
+            <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p id="roomLobbyDescription">選擇在線玩家，設定賽制後送出一對一邀請。</p></div>
             <div class="online-badge"><i></i><strong id="onlineCount">1</strong> 人在線</div>
           </div>
           <div id="roomGameTabs" class="room-game-tabs" aria-label="選擇遊戲"></div>
-          <div class="room-lobby-layout">
+          <div id="roomLobbyLayout" class="room-lobby-layout" hidden>
             <section class="room-table panel"><div class="room-table-head"><span>房間名稱</span><span>人數</span><span>模式</span><span>狀態</span><span></span></div><div id="roomList"></div></section>
             <aside class="create-room panel"><h2>建立房間</h2><label><span>房間名稱</span><input id="roomNameInput" maxlength="16" placeholder="例如：隔壁 101"></label><label><span>遊戲人數</span><select id="roomPlayerCount"></select></label><label class="ai-fill-row"><input id="roomAiFill" type="checkbox" checked><span>空位由 AI 補上</span></label><button id="createRoom" class="primary-button" type="button">建立房間</button><p>房間依遊戲分類，其他遊戲的玩家不會混入。</p></aside>
           </div>
-          <div class="legacy-lobby" hidden><button id="refreshLobby" type="button">更新</button><div id="playerList"></div><div id="lobbyAvatar"></div><div id="lobbyName"></div></div>
+          <div id="duelInviteLobby" class="lobby-layout">
+            <section class="player-panel panel">
+              <div class="panel-heading"><div><h2>在線玩家</h2><p>對方即使停留在遊戲首頁，也能收到邀請。</p></div><button id="refreshLobby" class="text-button" type="button">更新名單</button></div>
+              <div id="playerList" class="player-list"></div>
+            </section>
+            <aside class="lobby-side panel">
+              <span class="eyebrow">YOUR SEAT</span><h2>我的座位</h2>
+              <div class="my-player-card"><div id="lobbyAvatar" class="avatar">棋</div><div><strong id="lobbyName">棋手</strong><span><i></i> 在線・可接受邀請</span></div></div>
+              <div class="lobby-tip"><b>邀</b><p>點選玩家後，可設定遊戲、先後手、賽制與每步時間。</p></div>
+            </aside>
+          </div>
         </section>
 
         <section id="casualView" class="view casual-view">
@@ -290,7 +300,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-2"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-4"></script>
+    <script type="module" src="./src/app.js?v=neighbor-5"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-5"></script>
   </body>
 </html>

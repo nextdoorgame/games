@@ -92,6 +92,7 @@ let lobbyTimer = null;
 let onlineTimer = null;
 let onlineClockTimer = null;
 let currentInvite = null;
+let isRespondingInvite = false;
 let pendingInvitePlayer = null;
 let pendingInviteButton = null;
 let pendingInvites = new Set();
@@ -152,9 +153,8 @@ function showView(name) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
     }
-    fetchLobby();
-    lobbyTimer = window.setInterval(fetchLobby, 1200);
   }
+  if (ONLINE_AVAILABLE && name !== "game") startLobbyPolling();
   if (name === "records") renderRecords();
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -728,16 +728,25 @@ async function sendInvite(player, button, gameType, bestOf, inviterColor, turnTi
 }
 
 async function respondInvite(accept) {
-  if (!currentInvite) return;
+  if (!currentInvite || isRespondingInvite) return;
   const invite = currentInvite;
-  currentInvite = null;
-  els.inviteDialog.close();
+  isRespondingInvite = true;
+  const acceptButton = document.querySelector("#acceptInvite");
+  const declineButton = document.querySelector("#declineInvite");
+  acceptButton.disabled = true;
+  declineButton.disabled = true;
   try {
     const data = await api("/api/invite/respond", { method: "POST", body: JSON.stringify({ inviteId: invite.id, playerId, accept }) });
+    currentInvite = null;
+    els.inviteDialog.close();
     if (accept) await startOnlineGame(data.gameId);
     else showToast("已婉拒這次邀請");
   } catch (error) {
     showToast(error.message);
+  } finally {
+    isRespondingInvite = false;
+    acceptButton.disabled = false;
+    declineButton.disabled = false;
   }
 }
 
@@ -959,6 +968,12 @@ function stopLobbyPolling() {
   lobbyTimer = null;
 }
 
+function startLobbyPolling() {
+  if (!ONLINE_AVAILABLE || lobbyTimer || gameMode === "online") return;
+  fetchLobby();
+  lobbyTimer = window.setInterval(fetchLobby, 1200);
+}
+
 function saveCurrentRecord() {
   if (!game || game.status === "playing") return;
   const lastMove = game.moves.at(-1);
@@ -1041,6 +1056,11 @@ els.continueSeries.addEventListener("click", continueCurrentSeries);
 els.endSeries.addEventListener("click", endCurrentSeries);
 els.roundEndDialog.addEventListener("cancel", (event) => event.preventDefault());
 window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); window.clearInterval(onlineClockTimer); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden || gameMode === "online") return;
+  startLobbyPolling();
+  fetchLobby();
+});
 
 updateIdentity();
 updateHostingStatus();
