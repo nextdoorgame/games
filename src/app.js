@@ -1,5 +1,5 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
-import { chooseAiMove } from "./ai.js";
+import { chooseAiMove } from "./ai.js?v=board-19-1";
 
 const SIZE = 19;
 const BLACK = 1;
@@ -385,7 +385,7 @@ function scheduleAiMove() {
       if (game.status !== "playing") settleSingleRound();
     };
 
-    const worker = new Worker(new URL("./ai-worker.js", import.meta.url));
+    const worker = new Worker(new URL("./ai-worker.js?v=board-19-1", import.meta.url));
     aiWorker = worker;
     worker.addEventListener("message", (event) => {
       worker.terminate();

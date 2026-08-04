@@ -106,7 +106,7 @@ async function searchWithRapfi(board, difficulty) {
 }
 
 async function searchWithFallback(board, aiColor, humanColor, difficulty, reason) {
-  const { analyzeAiMove } = await import("./ai.js");
+  const { analyzeAiMove } = await import("./ai.js?v=board-19-1");
   return {
     ...analyzeAiMove(board, aiColor, humanColor, difficulty),
     engine: "fallback",
