@@ -1,5 +1,5 @@
 {
-  "name": "gomoku-online",
+  "name": "family-board-games",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -19,8 +19,8 @@
     "electron-builder": "^24.13.3"
   },
   "build": {
-    "appId": "com.local.gomoku",
-    "productName": "五子棋 Gomoku",
+    "appId": "com.local.familyboardgames",
+    "productName": "同樂棋室",
     "files": [
       "electron/**/*",
       "src/**/*",

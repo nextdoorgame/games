@@ -1,5 +1,6 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
-import { chooseAiMove } from "./ai.js?v=board-19-1";
+import { chooseAiMove } from "./ai.js?v=platform-1";
+import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
 
 const SIZE = 19;
 const BLACK = 1;
@@ -11,6 +12,7 @@ const ONLINE_AVAILABLE = Boolean(API_BASE);
 
 const els = {
   views: [...document.querySelectorAll(".view")],
+  gameView: document.querySelector("#gameView"),
   navItems: [...document.querySelectorAll(".nav-item")],
   profileName: document.querySelector("#profileName"),
   profileAvatar: document.querySelector("#profileAvatar"),
@@ -30,6 +32,13 @@ const els = {
   inviterName: document.querySelector("#inviterName"),
   inviterSeriesLabel: document.querySelector("#inviterSeriesLabel"),
   onlineOpponentName: document.querySelector("#onlineOpponentName"),
+  inviteGameName: document.querySelector("#inviteGameName"),
+  singleDialogTitle: document.querySelector("#singleDialogTitle"),
+  singleDialogDescription: document.querySelector("#singleDialogDescription"),
+  singleColorLegend: document.querySelector("#singleColorLegend"),
+  singleFirstColor: document.querySelector("#singleFirstColor"),
+  singleSecondColor: document.querySelector("#singleSecondColor"),
+  engineNote: document.querySelector("#engineNote"),
   board: document.querySelector("#board"),
   gameModeLabel: document.querySelector("#gameModeLabel"),
   gameTitle: document.querySelector("#gameTitle"),
@@ -95,6 +104,8 @@ let roundDialogKey = "";
 let onlineMatchClosedHandled = false;
 let renderedChatKey = "";
 let lastAutomaticMoveKey = "";
+let pendingSingleGameType = "gomoku";
+let preferredOnlineGameType = "gomoku";
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -160,8 +171,10 @@ function resetGameState(mode, options = {}) {
   els.board.removeAttribute("data-ai-depth");
   recordedGameKey = "";
   gameMode = mode;
+  const gameType = options.gameType || "gomoku";
   game = {
-    board: Array(SIZE * SIZE).fill(EMPTY),
+    gameType,
+    board: gameType === "xiangqi" ? createInitialXiangqiBoard() : Array(SIZE * SIZE).fill(EMPTY),
     moves: [],
     turn: BLACK,
     winner: EMPTY,
@@ -173,9 +186,17 @@ function resetGameState(mode, options = {}) {
 
 function renderBoard() {
   if (!game) return;
+  if (game.gameType === "xiangqi") renderXiangqiBoard();
+  else renderGomokuBoard();
+  renderGamePanel();
+}
+
+function renderGomokuBoard() {
   const lastIndex = game.moves.at(-1)?.index ?? -1;
   const winIndexes = new Set(game.winLine || []);
-  if (els.board.children.length !== SIZE * SIZE) {
+  els.board.className = "board";
+  els.board.setAttribute("aria-label", "十九路五子棋棋盤");
+  if (els.board.children.length !== SIZE * SIZE || els.board.dataset.gameType !== "gomoku") {
     const fragment = document.createDocumentFragment();
     for (let index = 0; index < SIZE * SIZE; index += 1) {
       const row = Math.floor(index / SIZE);
@@ -191,6 +212,7 @@ function renderBoard() {
       fragment.append(button);
     }
     els.board.replaceChildren(fragment);
+    els.board.dataset.gameType = "gomoku";
   }
 
   game.board.forEach((stone, index) => {
@@ -209,7 +231,48 @@ function renderBoard() {
       }
     }
   });
-  renderGamePanel();
+}
+
+function renderXiangqiBoard() {
+  const lastIndex = game.moves.at(-1)?.to ?? -1;
+  const legalTargets = new Set((game.legalMoves || []).map((move) => move.to));
+  els.board.className = "board xiangqi-board";
+  els.board.setAttribute("aria-label", "中國象棋棋盤，九路十行");
+  if (els.board.children.length !== 90 || els.board.dataset.gameType !== "xiangqi") {
+    const fragment = document.createDocumentFragment();
+    for (let index = 0; index < 90; index += 1) {
+      const row = Math.floor(index / 9);
+      const col = index % 9;
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "intersection";
+      button.style.left = `${(col / 8) * 100}%`;
+      button.style.top = `${(row / 9) * 100}%`;
+      button.dataset.index = String(index);
+      button.setAttribute("role", "gridcell");
+      fragment.append(button);
+    }
+    els.board.replaceChildren(fragment);
+    els.board.dataset.gameType = "xiangqi";
+  }
+  game.board.forEach((piece, index) => {
+    const button = els.board.children[index];
+    const color = xiangqiPieceColor(piece);
+    const selected = game.selectedIndex === index;
+    const legal = legalTargets.has(index);
+    button.className = `intersection${piece ? " occupied" : ""}${selected ? " selected" : ""}${legal ? ` legal${piece ? " capture" : ""}` : ""}${lastIndex === index ? " last" : ""}`;
+    button.setAttribute("aria-label", `${String.fromCharCode(65 + (index % 9))}${Math.floor(index / 9) + 1}${piece ? ` ${color === BLACK ? "紅方" : "黑方"}${xiangqiPieceLabel(piece)}` : " 空位"}`);
+    if (button.dataset.piece !== (piece || "")) {
+      button.dataset.piece = piece || "";
+      button.replaceChildren();
+      if (piece) {
+        const token = document.createElement("span");
+        token.className = `xiangqi-piece ${color === BLACK ? "red" : "black"}`;
+        token.textContent = xiangqiPieceLabel(piece);
+        button.append(token);
+      }
+    }
+  });
 }
 
 function playerColor() {
@@ -220,13 +283,14 @@ function playerColor() {
 
 function renderGamePanel() {
   if (!game) return;
+  const isXiangqi = game.gameType === "xiangqi";
   const myColor = playerColor();
   const myTurn = game.status === "playing" && game.turn === myColor;
-  const colorName = game.turn === BLACK ? "黑棋" : "白棋";
+  const colorName = isXiangqi ? (game.turn === BLACK ? "紅方" : "黑方") : (game.turn === BLACK ? "黑棋" : "白棋");
   els.moveCount.textContent = String(game.moves.length);
   els.turnPill.classList.toggle("waiting", !myTurn && game.status === "playing");
   els.turnPill.classList.toggle("finished", game.status !== "playing");
-  els.turnPill.querySelector("i").style.background = game.turn === BLACK ? "#222" : "#eee";
+  els.turnPill.querySelector("i").style.background = isXiangqi ? (game.turn === BLACK ? "#b94136" : "#222") : (game.turn === BLACK ? "#222" : "#eee");
   els.turnPill.querySelector("span").textContent = game.status !== "playing" ? "本局已結束" : myTurn ? "輪到你了" : `${colorName}思考中`;
   els.meRow.classList.toggle("active", myTurn);
   els.opponentRow.classList.toggle("active", !myTurn && game.status === "playing");
@@ -234,15 +298,25 @@ function renderGamePanel() {
 
   const myStone = els.meRow.querySelector(".stone-icon");
   const opponentStone = els.opponentRow.querySelector(".stone-icon");
-  myStone.className = `stone-icon ${myColor === BLACK ? "black-stone" : "white-stone"}`;
-  opponentStone.className = `stone-icon ${myColor === BLACK ? "white-stone" : "black-stone"}`;
+  if (isXiangqi) {
+    myStone.className = `stone-icon xiangqi-icon ${myColor === BLACK ? "red" : "black"}`;
+    myStone.textContent = myColor === BLACK ? "帥" : "將";
+    opponentStone.className = `stone-icon xiangqi-icon ${myColor === BLACK ? "black" : "red"}`;
+    opponentStone.textContent = myColor === BLACK ? "將" : "帥";
+  } else {
+    myStone.textContent = "";
+    opponentStone.textContent = "";
+    myStone.className = `stone-icon ${myColor === BLACK ? "black-stone" : "white-stone"}`;
+    opponentStone.className = `stone-icon ${myColor === BLACK ? "white-stone" : "black-stone"}`;
+  }
 
   if (game.status === "playing") {
-    els.gameStatus.textContent = myTurn ? `輪到你執${myColor === BLACK ? "黑" : "白"}棋，請選擇交叉點落子。` : gameMode === "single" ? "AI 正在分析棋局…" : "等待對手落子，棋局會自動同步。";
+    if (isXiangqi) els.gameStatus.textContent = myTurn ? `輪到你執${myColor === BLACK ? "紅" : "黑"}方，請選擇棋子。` : gameMode === "single" ? "象棋 AI 正在分析棋局…" : "等待對手走棋，棋局會自動同步。";
+    else els.gameStatus.textContent = myTurn ? `輪到你執${myColor === BLACK ? "黑" : "白"}棋，請選擇交叉點落子。` : gameMode === "single" ? "AI 正在分析棋局…" : "等待對手落子，棋局會自動同步。";
   } else if (game.winner === EMPTY) {
     els.gameStatus.textContent = "棋盤已滿，本局和棋。";
   } else {
-    els.gameStatus.textContent = game.winner === myColor ? "漂亮！你率先連成五子，贏得本局。" : "對手率先連成五子，本局結束。";
+    els.gameStatus.textContent = game.winner === myColor ? (isXiangqi ? "漂亮！你將死對手，贏得本局。" : "漂亮！你率先連成五子，贏得本局。") : (isXiangqi ? "對手將死你的主帥，本局結束。" : "對手率先連成五子，本局結束。");
   }
 
   els.undoMove.hidden = gameMode !== "single";
@@ -261,7 +335,7 @@ function renderSeriesPanel() {
   const opponent = gameMode === "online" ? game.players?.find((item) => item.id !== playerId) : null;
   const opponentScore = gameMode === "single" ? series?.opponentWins || 0 : game.scores?.[opponent?.id] || 0;
   els.seriesFormat.textContent = bestOf === 5 ? "五戰三勝" : "三戰兩勝";
-  els.roundLabel.textContent = `第 ${round} 局・每局交換黑白`;
+  els.roundLabel.textContent = `第 ${round} 局・每局交換先後手`;
   els.mySeriesScore.textContent = String(myScore);
   els.opponentSeriesScore.textContent = String(opponentScore);
 }
@@ -353,10 +427,51 @@ function placeLocalStone(index, color) {
   return true;
 }
 
+function placeLocalXiangqiMove(move, color) {
+  if (!move || game.status !== "playing") return false;
+  const piece = game.board[move.from];
+  const captured = game.board[move.to];
+  game.board = applyXiangqiMove(game.board, move);
+  game.moves.push({ ...move, piece, captured, color });
+  game.selectedIndex = null;
+  game.legalMoves = [];
+  const nextTurn = otherXiangqiColor(color);
+  game.winner = getXiangqiWinner(game.board, nextTurn);
+  if (game.winner) game.status = "finished";
+  else game.turn = nextTurn;
+  return true;
+}
+
+function handleXiangqiClick(index) {
+  const myColor = playerColor();
+  if (game.turn !== myColor) return;
+  const selectedMove = (game.legalMoves || []).find((move) => move.to === index);
+  if (selectedMove) {
+    if (gameMode === "single") {
+      placeLocalXiangqiMove(selectedMove, game.playerColor);
+      renderBoard();
+      if (game.status === "playing") scheduleAiMove(); else settleSingleRound();
+    } else if (gameMode === "online") makeOnlineMove(selectedMove);
+    return;
+  }
+  if (xiangqiPieceColor(game.board[index]) === myColor) {
+    game.selectedIndex = index;
+    game.legalMoves = getXiangqiMovesFrom(game.board, myColor, index);
+  } else {
+    game.selectedIndex = null;
+    game.legalMoves = [];
+  }
+  renderBoard();
+}
+
 function handleBoardClick(event) {
   const button = event.target.closest(".intersection");
   if (!button || !game || game.status !== "playing") return;
   const index = Number(button.dataset.index);
+  if (game.gameType === "xiangqi") {
+    handleXiangqiClick(index);
+    return;
+  }
   if (gameMode === "single") {
     if (game.turn !== game.playerColor || !placeLocalStone(index, game.playerColor)) return;
     renderBoard();
@@ -368,6 +483,10 @@ function handleBoardClick(event) {
 }
 
 function scheduleAiMove() {
+  if (game?.gameType === "xiangqi") {
+    scheduleXiangqiAiMove();
+    return;
+  }
   cancelAiMove();
   const requestId = aiRequest;
   aiTimer = window.setTimeout(() => {
@@ -407,17 +526,60 @@ function scheduleAiMove() {
   }, 260);
 }
 
+function scheduleXiangqiAiMove() {
+  cancelAiMove();
+  const requestId = aiRequest;
+  aiTimer = window.setTimeout(() => {
+    if (gameMode !== "single" || game.status !== "playing" || game.turn !== game.aiColor) return;
+    const expectedMoveCount = game.moves.length;
+    els.gameStatus.textContent = "象棋 AI 正在推演局面…";
+    const worker = new Worker(new URL("./xiangqi-worker.js?v=platform-1", import.meta.url), { type: "module" });
+    aiWorker = worker;
+    worker.addEventListener("message", (event) => {
+      worker.terminate();
+      if (aiWorker === worker) aiWorker = null;
+      if (requestId !== aiRequest || gameMode !== "single" || game.status !== "playing" || game.moves.length !== expectedMoveCount) return;
+      els.board.dataset.aiEngine = event.data.engine || "xiangqi-alpha-beta";
+      els.board.dataset.aiDepth = String(event.data.depth || 0);
+      if (!event.data.move || !placeLocalXiangqiMove(event.data.move, game.aiColor)) return;
+      renderBoard();
+      if (game.status !== "playing") settleSingleRound();
+    }, { once: true });
+    worker.addEventListener("error", () => {
+      worker.terminate();
+      if (aiWorker === worker) aiWorker = null;
+      showToast("象棋 AI 暫時無法完成運算，請重新開始");
+    }, { once: true });
+    worker.postMessage({ board: [...game.board], aiColor: game.aiColor, difficulty: game.difficulty });
+  }, 260);
+}
+
+function openSingleSetup(gameType) {
+  pendingSingleGameType = gameType === "xiangqi" ? "xiangqi" : "gomoku";
+  const xiangqi = pendingSingleGameType === "xiangqi";
+  els.singleDialogTitle.textContent = xiangqi ? "設定中國象棋挑戰" : "設定五子棋挑戰";
+  els.singleDialogDescription.textContent = "選擇 AI 強度、系列賽制與第一局執棋顏色，之後每局會交換先後手。";
+  els.singleColorLegend.textContent = xiangqi ? "第一局執棋方" : "第一局執棋顏色";
+  els.singleFirstColor.innerHTML = xiangqi ? '<i class="mini-stone xiangqi-icon red">帥</i>紅方先手' : '<i class="mini-stone black-stone"></i>黑棋先手';
+  els.singleSecondColor.innerHTML = xiangqi ? '<i class="mini-stone xiangqi-icon black">將</i>黑方後手' : '<i class="mini-stone white-stone"></i>白棋後手';
+  els.engineNote.hidden = xiangqi;
+  const details = xiangqi ? ["基礎搜尋 2 層", "進階搜尋 3 層", "深入搜尋 4 層"] : ["Mix9sVQ 搜尋 4 秒", "Mix9sVQ 搜尋 8 秒", "Mix9sVQ 全力 15 秒"];
+  els.singleDialog.querySelectorAll(".difficulty-grid small").forEach((item, index) => { item.textContent = details[index]; });
+  els.singleDialog.showModal();
+}
+
 function startSingleGame() {
   const form = els.singleDialog.querySelector("form");
   const data = new FormData(form);
   const difficulty = data.get("difficulty") || "medium";
   const color = data.get("color") === "white" ? WHITE : BLACK;
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
-  series = { mode: "single", bestOf, target: Math.ceil(bestOf / 2), round: 1, myWins: 0, opponentWins: 0, draws: 0, initialPlayerColor: color };
+  const gameType = pendingSingleGameType;
+  series = { mode: "single", gameType, bestOf, target: Math.ceil(bestOf / 2), round: 1, myWins: 0, opponentWins: 0, draws: 0, initialPlayerColor: color };
   const labels = { easy: "初級", medium: "進階", hard: "困難" };
-  els.gameModeLabel.textContent = "SINGLE MATCH";
-  els.gameTitle.textContent = `挑戰 ${labels[difficulty]} AI`;
-  els.opponentName.textContent = difficulty === "easy" ? "Rapfi 戰術家" : difficulty === "hard" ? "Rapfi 棋聖" : "Rapfi 棋手";
+  els.gameModeLabel.textContent = gameType === "xiangqi" ? "CHINESE CHESS" : "GOMOKU";
+  els.gameTitle.textContent = gameType === "xiangqi" ? `中國象棋・${labels[difficulty]} AI` : `五子棋・${labels[difficulty]} AI`;
+  els.opponentName.textContent = gameType === "xiangqi" ? (difficulty === "easy" ? "象棋學徒 AI" : difficulty === "hard" ? "象棋棋聖 AI" : "象棋棋手 AI") : (difficulty === "easy" ? "Rapfi 戰術家" : difficulty === "hard" ? "Rapfi 棋聖" : "Rapfi 棋手");
   els.opponentTag.textContent = labels[difficulty];
   els.singleDialog.close();
   startSingleRound(difficulty);
@@ -425,8 +587,9 @@ function startSingleGame() {
 
 function startSingleRound(difficulty = game?.difficulty || "medium") {
   const playerColor = series.round % 2 === 1 ? series.initialPlayerColor : series.initialPlayerColor === BLACK ? WHITE : BLACK;
-  resetGameState("single", { difficulty, playerColor, aiColor: playerColor === BLACK ? WHITE : BLACK, roundSettled: false });
+  resetGameState("single", { gameType: series.gameType, difficulty, playerColor, aiColor: playerColor === BLACK ? WHITE : BLACK, roundSettled: false, selectedIndex: null, legalMoves: [] });
   roundDialogKey = "";
+  els.gameView?.classList?.toggle?.("xiangqi-theme", series.gameType === "xiangqi");
   showView("game");
   renderBoard();
   if (game.aiColor === BLACK) scheduleAiMove();
@@ -452,11 +615,16 @@ function undoSingleMove() {
   const removeCount = game.turn === game.aiColor && game.status === "playing" ? 1 : 2;
   for (let i = 0; i < removeCount && game.moves.length > minimum; i += 1) {
     const move = game.moves.pop();
-    game.board[move.index] = EMPTY;
+    if (game.gameType === "xiangqi") {
+      game.board[move.from] = move.piece;
+      game.board[move.to] = move.captured || null;
+    } else game.board[move.index] = EMPTY;
   }
   game.status = "playing";
   game.winner = EMPTY;
   game.winLine = [];
+  game.selectedIndex = null;
+  game.legalMoves = [];
   game.turn = game.moves.length % 2 === 0 ? BLACK : WHITE;
   recordedGameKey = "";
   renderBoard();
@@ -464,8 +632,8 @@ function undoSingleMove() {
 
 function restartSingle() {
   if (gameMode !== "single") return;
-  const { difficulty, playerColor, aiColor } = game;
-  resetGameState("single", { difficulty, playerColor, aiColor, roundSettled: false });
+  const { gameType, difficulty, playerColor, aiColor } = game;
+  resetGameState("single", { gameType, difficulty, playerColor, aiColor, roundSettled: false, selectedIndex: null, legalMoves: [] });
   renderBoard();
   if (aiColor === BLACK) scheduleAiMove();
 }
@@ -495,9 +663,11 @@ async function fetchLobby() {
     } else if (data.incomingInvites.length && !currentInvite && !els.inviteDialog.open) {
       currentInvite = data.incomingInvites[0];
       els.inviterName.textContent = currentInvite.fromName;
+      const inviteIsXiangqi = currentInvite.gameType === "xiangqi";
+      els.inviteGameName.textContent = inviteIsXiangqi ? "中國象棋" : "五子棋";
       const inviterIsBlack = currentInvite.inviterColor !== WHITE;
-      const firstRoundLabel = inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手";
-      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘・每局交換黑白`;
+      const firstRoundLabel = inviteIsXiangqi ? (inviterIsBlack ? "對方執紅先手・你執黑後手" : "你執紅先手・對方執黑後手") : (inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手");
+      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘・每局交換先後手`;
       els.inviteDialog.showModal();
     }
   } catch (error) {
@@ -536,18 +706,20 @@ function prepareOnlineInvite(player, button) {
   pendingInvitePlayer = player;
   pendingInviteButton = button;
   els.onlineOpponentName.textContent = player.name;
+  const preferred = els.onlineSeriesDialog.querySelector(`input[name="gameType"][value="${preferredOnlineGameType}"]`);
+  if (preferred) preferred.checked = true;
   els.onlineSeriesDialog.showModal();
 }
 
-async function sendInvite(player, button, bestOf, inviterColor, turnTimeMinutes) {
+async function sendInvite(player, button, gameType, bestOf, inviterColor, turnTimeMinutes) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, bestOf, inviterColor, turnTimeMinutes }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, bestOf, inviterColor, turnTimeMinutes }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
-    showToast(`已邀請 ${player.name}；每步 ${turnTimeMinutes} 分鐘`);
+    showToast(`已邀請 ${player.name} 進行${gameType === "xiangqi" ? "中國象棋" : "五子棋"}；每步 ${turnTimeMinutes} 分鐘`);
   } catch (error) {
     button.disabled = false;
     button.textContent = "邀請對戰";
@@ -614,13 +786,19 @@ function applyOnlineGameData(data) {
     board: data.board,
     moves: data.moves,
     winLine: data.winLine || [],
-    clockOffsetMs: Number(data.serverTime) - Date.now()
+    clockOffsetMs: Number(data.serverTime) - Date.now(),
+    selectedIndex: null,
+    legalMoves: []
   };
+  const isXiangqi = data.gameType === "xiangqi";
+  els.gameView.classList.toggle("xiangqi-theme", isXiangqi);
+  els.gameModeLabel.textContent = isXiangqi ? "CHINESE CHESS ONLINE" : "GOMOKU ONLINE";
+  els.gameTitle.textContent = isXiangqi ? "中國象棋・線上對戰" : "五子棋・線上對戰";
   els.opponentName.textContent = opponent.name;
   renderOnlineChat(data.messages || []);
   renderBoard();
   const latestMove = game.moves.at(-1);
-  const automaticKey = latestMove?.automatic ? `${game.round}:${game.moves.length}:${latestMove.index}` : "";
+  const automaticKey = latestMove?.automatic ? `${game.round}:${game.moves.length}:${latestMove.index ?? `${latestMove.from}-${latestMove.to}`}` : "";
   if (game.moves.length > previousMoveCount && automaticKey && automaticKey !== lastAutomaticMoveKey) {
     lastAutomaticMoveKey = automaticKey;
     showToast(`${latestMove.color === game.myColor ? "你" : "對手"}逾時，系統已隨機落子`);
@@ -647,10 +825,11 @@ function applyOnlineGameData(data) {
   return true;
 }
 
-async function makeOnlineMove(index) {
+async function makeOnlineMove(move) {
   if (!game?.id) return;
   try {
-    const data = await api(`/api/game/${encodeURIComponent(game.id)}/move`, { method: "POST", body: JSON.stringify({ playerId, index }) });
+    const payload = game.gameType === "xiangqi" ? { playerId, from: move.from, to: move.to } : { playerId, index: move };
+    const data = await api(`/api/game/${encodeURIComponent(game.id)}/move`, { method: "POST", body: JSON.stringify(payload) });
     applyOnlineGameData(data);
   } catch (error) {
     showToast(error.message);
@@ -690,7 +869,7 @@ function showRoundEndDialog() {
   const opponentScore = gameMode === "single" ? series.opponentWins : game.scores?.[opponent.id] || 0;
   const target = gameMode === "single" ? series.target : game.targetWins;
   const seriesComplete = myScore >= target || opponentScore >= target;
-  const nextColor = mine === BLACK ? "白棋" : "黑棋";
+  const nextColor = game.gameType === "xiangqi" ? (mine === BLACK ? "黑方" : "紅方") : (mine === BLACK ? "白棋" : "黑棋");
 
   els.roundEndIcon.textContent = draw ? "＝" : wonRound ? "勝" : "●";
   els.roundEndTitle.textContent = seriesComplete ? (myScore >= target ? "你贏得系列賽！" : "系列賽結束") : draw ? "本局和棋" : wonRound ? "你贏下這一局！" : "對手贏下這一局";
@@ -699,7 +878,7 @@ function showRoundEndDialog() {
   els.roundOpponentName.textContent = opponent?.name || els.opponentName.textContent;
   els.roundMyScore.textContent = String(myScore);
   els.roundOpponentScore.textContent = String(opponentScore);
-  els.nextColorMessage.textContent = seriesComplete ? `再開一個系列賽時，你將改執${nextColor}。` : `下一局你將改執${nextColor}，雙方交換黑白。`;
+  els.nextColorMessage.textContent = seriesComplete ? `再開一個系列賽時，你將改執${nextColor}。` : `下一局你將改執${nextColor}，雙方交換先後手。`;
   els.continueSeries.textContent = seriesComplete ? "再來一個系列賽" : "繼續下一局";
   els.roundEndDialog.showModal();
 }
@@ -782,7 +961,9 @@ function stopLobbyPolling() {
 
 function saveCurrentRecord() {
   if (!game || game.status === "playing") return;
-  const key = gameMode === "online" ? `${game.id}-${game.round || 1}` : `${series?.round || 1}-${game.moves.length}-${game.moves.at(-1)?.index}-${game.winner}`;
+  const lastMove = game.moves.at(-1);
+  const lastMoveKey = lastMove?.index ?? `${lastMove?.from ?? "start"}-${lastMove?.to ?? "start"}`;
+  const key = gameMode === "online" ? `${game.id}-${game.round || 1}` : `${series?.round || 1}-${game.moves.length}-${lastMoveKey}-${game.winner}`;
   if (recordedGameKey === key) return;
   recordedGameKey = key;
   const mine = playerColor();
@@ -791,6 +972,7 @@ function saveCurrentRecord() {
     id: crypto.randomUUID(),
     date: new Date().toISOString(),
     mode: gameMode,
+    gameType: game.gameType || "gomoku",
     opponent: gameMode === "single" ? els.opponentName.textContent : els.opponentName.textContent,
     moves: game.moves.length,
     result: game.winner === EMPTY ? "draw" : game.winner === mine ? "win" : "loss"
@@ -810,7 +992,7 @@ function renderRecords() {
     item.className = "record-item";
     const date = new Intl.DateTimeFormat("zh-TW", { month: "long", day: "numeric", hour: "2-digit", minute: "2-digit" }).format(new Date(record.date));
     item.innerHTML = `<div><strong></strong><p></p></div><span class="record-result ${record.result}">${resultLabel[record.result]}</span>`;
-    item.querySelector("strong").textContent = `對戰 ${record.opponent}`;
+    item.querySelector("strong").textContent = `${record.gameType === "xiangqi" ? "中國象棋" : "五子棋"}・對戰 ${record.opponent}`;
     item.querySelector("p").textContent = `${record.mode === "single" ? "單人模式" : "線上對戰"}・${record.moves} 手・${date}`;
     return item;
   }));
@@ -820,19 +1002,21 @@ document.addEventListener("click", (event) => {
   const viewTrigger = event.target.closest("[data-view]");
   if (viewTrigger) {
     event.preventDefault();
+    if (viewTrigger.dataset.preferredGame) preferredOnlineGameType = viewTrigger.dataset.preferredGame;
     showView(viewTrigger.dataset.view);
   }
 });
 
-document.querySelector("#openSingleSetup").addEventListener("click", () => els.singleDialog.showModal());
+document.querySelectorAll(".game-solo-button").forEach((button) => button.addEventListener("click", () => openSingleSetup(button.dataset.gameType)));
 document.querySelector("#startSingle").addEventListener("click", startSingleGame);
 document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   if (!pendingInvitePlayer || !pendingInviteButton) return;
   const data = new FormData(els.onlineSeriesDialog.querySelector("form"));
+  const gameType = data.get("gameType") === "xiangqi" ? "xiangqi" : "gomoku";
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
-  sendInvite(pendingInvitePlayer, pendingInviteButton, bestOf, inviterColor, turnTimeMinutes);
+  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, bestOf, inviterColor, turnTimeMinutes);
 });
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {

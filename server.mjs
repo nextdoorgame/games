@@ -3,6 +3,7 @@ import { extname, join, normalize } from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
 
 const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
@@ -95,22 +96,40 @@ function winningLine(board, index, color) {
   return [];
 }
 
-function applyGameMove(game, index, color, { automatic = false, now = Date.now() } = {}) {
-  game.board[index] = color;
-  game.moves.push({ index, color, automatic });
-  game.winLine = winningLine(game.board, index, color);
-  if (game.winLine.length) {
-    game.status = "finished";
-    game.winner = color;
-    const winner = game.players.find((player) => player.color === color);
+function initialBoard(gameType) {
+  return gameType === "xiangqi" ? createInitialXiangqiBoard() : Array(BOARD_SIZE * BOARD_SIZE).fill(0);
+}
+
+function applyGameMove(game, move, color, { automatic = false, now = Date.now() } = {}) {
+  if (game.gameType === "xiangqi") {
+    const captured = game.board[move.to];
+    game.board = applyXiangqiMove(game.board, move);
+    game.moves.push({ ...move, piece: game.board[move.to], captured, color, automatic });
+    game.winLine = [];
+    const nextTurn = otherXiangqiColor(color);
+    game.winner = getXiangqiWinner(game.board, nextTurn);
+    if (game.winner) game.status = "finished";
+    else game.turn = nextTurn;
+  } else {
+    const index = Number(move);
+    game.board[index] = color;
+    game.moves.push({ index, color, automatic });
+    game.winLine = winningLine(game.board, index, color);
+    if (game.winLine.length) {
+      game.status = "finished";
+      game.winner = color;
+    } else if (game.moves.length === BOARD_SIZE * BOARD_SIZE) {
+      game.status = "finished";
+    } else {
+      game.turn = color === BLACK ? WHITE : BLACK;
+    }
+  }
+  if (game.status === "finished" && game.winner) {
+    const winner = game.players.find((player) => player.color === game.winner);
     if (winner) {
       game.scores[winner.id] += 1;
       if (game.scores[winner.id] >= game.targetWins) game.seriesWinnerId = winner.id;
     }
-  } else if (game.moves.length === BOARD_SIZE * BOARD_SIZE) {
-    game.status = "finished";
-  } else {
-    game.turn = color === BLACK ? WHITE : BLACK;
   }
   game.revision += 1;
   game.updatedAt = now;
@@ -120,18 +139,20 @@ function applyGameMove(game, index, color, { automatic = false, now = Date.now()
 export function applyExpiredTurn(game, now = Date.now(), random = Math.random) {
   if (game.status !== "playing" || !game.turnTimeMs || !game.turnStartedAt) return false;
   if (now < game.turnStartedAt + game.turnTimeMs) return false;
-  const emptyIndexes = [];
-  game.board.forEach((stone, index) => { if (!stone) emptyIndexes.push(index); });
-  if (!emptyIndexes.length) return false;
-  const randomIndex = Math.min(emptyIndexes.length - 1, Math.floor(random() * emptyIndexes.length));
-  applyGameMove(game, emptyIndexes[randomIndex], game.turn, { automatic: true, now });
+  const choices = game.gameType === "xiangqi"
+    ? getXiangqiLegalMoves(game.board, game.turn)
+    : game.board.map((stone, index) => stone ? null : index).filter((index) => index !== null);
+  if (!choices.length) return false;
+  const randomIndex = Math.min(choices.length - 1, Math.floor(random() * choices.length));
+  applyGameMove(game, choices[randomIndex], game.turn, { automatic: true, now });
   return true;
 }
 
 function publicGame(game) {
   return {
     id: game.id,
-    boardSize: BOARD_SIZE,
+    gameType: game.gameType,
+    boardSize: game.gameType === "xiangqi" ? { rows: 10, cols: 9 } : BOARD_SIZE,
     board: game.board,
     moves: game.moves,
     players: game.players,
@@ -168,7 +189,7 @@ function resetRound(game, restartSeries) {
   } else {
     game.round += 1;
   }
-  game.board = Array(BOARD_SIZE * BOARD_SIZE).fill(0);
+  game.board = initialBoard(game.gameType);
   game.moves = [];
   game.turn = BLACK;
   game.status = "playing";
@@ -204,15 +225,16 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const bestOf = Number(body.bestOf) === 5 ? 5 : 3;
     const inviterColor = body.inviterColor === "white" ? WHITE : BLACK;
+    const gameType = body.gameType === "xiangqi" ? "xiangqi" : "gomoku";
     const turnTimeMinutes = TURN_TIME_OPTIONS.has(Number(body.turnTimeMinutes)) ? Number(body.turnTimeMinutes) : 3;
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
     if (from.id === to.id) return sendJson(res, 400, { error: "不能邀請自己" });
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
-    const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.status === "pending");
+    const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.gameType === gameType && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, bestOf, inviterColor, turnTimeMinutes, status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, gameType, bestOf, inviterColor, turnTimeMinutes, status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
@@ -232,7 +254,8 @@ async function handleApi(req, res, url) {
     const inviterIsBlack = invite.inviterColor !== WHITE;
     const game = {
       id: randomUUID(),
-      board: Array(BOARD_SIZE * BOARD_SIZE).fill(0),
+      gameType: invite.gameType === "xiangqi" ? "xiangqi" : "gomoku",
+      board: initialBoard(invite.gameType),
       moves: [],
       players: [
         { id: from.id, name: from.name, color: inviterIsBlack ? BLACK : WHITE },
@@ -279,14 +302,22 @@ async function handleApi(req, res, url) {
     if (!game) return sendJson(res, 404, { error: "找不到這場對局" });
     const body = await readJson(req);
     const player = game.players.find((item) => item.id === body.playerId);
-    const index = Number(body.index);
     if (!player) return sendJson(res, 403, { error: "你不在這場對局中" });
     const timedOut = applyExpiredTurn(game);
     if (timedOut) return sendJson(res, 409, { error: "下棋時間已到，系統已自動替你落子" });
     if (game.status !== "playing") return sendJson(res, 409, { error: "這場對局已經結束" });
     if (player.color !== game.turn) return sendJson(res, 409, { error: "還沒輪到你" });
-    if (!Number.isInteger(index) || index < 0 || index >= BOARD_SIZE * BOARD_SIZE || game.board[index]) return sendJson(res, 400, { error: "這個位置不能落子" });
-    applyGameMove(game, index, player.color);
+    if (game.gameType === "xiangqi") {
+      const from = Number(body.from);
+      const to = Number(body.to);
+      const move = getXiangqiLegalMoves(game.board, player.color).find((candidate) => candidate.from === from && candidate.to === to);
+      if (!move) return sendJson(res, 400, { error: "這一步不符合象棋規則" });
+      applyGameMove(game, move, player.color);
+    } else {
+      const index = Number(body.index);
+      if (!Number.isInteger(index) || index < 0 || index >= BOARD_SIZE * BOARD_SIZE || game.board[index]) return sendJson(res, 400, { error: "這個位置不能落子" });
+      applyGameMove(game, index, player.color);
+    }
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -416,6 +447,6 @@ const isMain = process.argv[1] === fileURLToPath(import.meta.url);
 if (isMain) {
   const port = Number(process.env.PORT || 5173);
   startStaticServer({ preferredPort: port, host: process.env.HOST || "127.0.0.1" })
-    .then(({ url }) => console.log(`Gomoku running at ${url}`))
+    .then(({ url }) => console.log(`Family games platform running at ${url}`))
     .catch((error) => { console.error(error); process.exit(1); });
 }
