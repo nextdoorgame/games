@@ -140,9 +140,9 @@ h1, h2, h3 { font-family: "Noto Serif TC", serif; letter-spacing: -.03em; }
 .turn-pill { justify-self: end; border: 1px solid var(--line); background: white; min-height: 34px; padding: 0 13px; display: flex; align-items: center; gap: 8px; font-size: 10px; }
 .turn-pill i { width: 9px; height: 9px; border-radius: 50%; background: #222; }
 .turn-pill.waiting i { background: #eee; border: 1px solid #999; }.turn-pill.finished i { background: var(--red); }
-.game-layout { display: grid; grid-template-columns: minmax(480px, 690px) 280px; gap: 24px; justify-content: center; align-items: start; }
+.game-layout { display: grid; grid-template-columns: 714px 280px; gap: 28px; justify-content: center; align-items: start; }
 .board-card { background: #ede6d7; padding: clamp(14px, 2vw, 27px); box-shadow: var(--shadow); border: 1px solid #d8cbb7; }
-.board { --cell: clamp(25px, 3.05vw, 39px); position: relative; width: calc(var(--cell) * 14); height: calc(var(--cell) * 14); margin: calc(var(--cell) / 2); background-image: linear-gradient(rgba(65,47,29,.55) 1px, transparent 1px), linear-gradient(90deg, rgba(65,47,29,.55) 1px, transparent 1px); background-size: var(--cell) var(--cell); background-position: 0 0; }
+.board { --cell: 44px; position: relative; width: calc(var(--cell) * 14); height: calc(var(--cell) * 14); margin: calc(var(--cell) / 2) auto; background-image: linear-gradient(rgba(65,47,29,.55) 1px, transparent 1px), linear-gradient(90deg, rgba(65,47,29,.55) 1px, transparent 1px); background-size: var(--cell) var(--cell); background-position: 0 0; }
 .board::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 50%, #4c3723 0 3px, transparent 3.5px), radial-gradient(circle at 21.43% 21.43%, #4c3723 0 3px, transparent 3.5px), radial-gradient(circle at 78.57% 21.43%, #4c3723 0 3px, transparent 3.5px), radial-gradient(circle at 21.43% 78.57%, #4c3723 0 3px, transparent 3.5px), radial-gradient(circle at 78.57% 78.57%, #4c3723 0 3px, transparent 3.5px); pointer-events: none; }
 .intersection { position: absolute; width: var(--cell); height: var(--cell); transform: translate(-50%,-50%); border: 0; border-radius: 50%; padding: 0; background: transparent; display: grid; place-items: center; }
 .intersection:not(.occupied):hover::after { content: ""; width: 28%; height: 28%; border-radius: 50%; background: rgba(185,65,54,.52); }
@@ -191,14 +191,26 @@ h1, h2, h3 { font-family: "Noto Serif TC", serif; letter-spacing: -.03em; }
 .text-field { display: grid; gap: 7px; margin-top: 22px; text-align: left; }.text-field span { font-size: 10px; font-weight: 700; }.text-field input { width: 100%; min-height: 44px; border: 1px solid var(--line); padding: 0 12px; outline: none; }.text-field input:focus { border-color: var(--red); }
 .toast { position: fixed; z-index: 50; right: 25px; top: 98px; background: #20221f; color: #fff; padding: 13px 17px; font-size: 11px; box-shadow: var(--shadow); transform: translateY(-10px); opacity: 0; pointer-events: none; transition: .25s; }.toast.show { opacity: 1; transform: translateY(0); }
 
+@media (max-width: 1399px) {
+  .game-layout { grid-template-columns: 1fr; }
+  .board-card { width: fit-content; justify-self: center; }
+  .game-panel { grid-template-columns: 1fr 1fr; }
+  .players-card { grid-row: span 3; }
+  .online-chat { grid-column: 1 / -1; }
+}
+
+@media (min-width: 961px) and (max-width: 1399px) {
+  .board { --cell: min(44px, calc((100vw - 420px) / 15)); }
+}
+
 @media (max-width: 960px) {
   .app-shell { grid-template-columns: 76px 1fr; }.sidebar { width: 76px; padding: 27px 14px; }.brand { justify-content: center; }.brand > span:last-child, .nav-item span:not(.nav-icon), .nav-item b, .sidebar-note div, .copyright { display: none; }.main-nav { margin-top: 48px; }.nav-item { grid-template-columns: 1fr; padding: 13px; }.sidebar-note { justify-content: center; }.main-content { grid-column: 2; }
   .lobby-layout { grid-template-columns: 1fr; }.lobby-side { display: none; }
-  .game-layout { grid-template-columns: 1fr; }.game-panel { grid-template-columns: 1fr 1fr; }.players-card { grid-row: span 3; }.online-chat { grid-column: 1 / -1; }
+  .board { --cell: min(44px, calc((100vw - 180px) / 15)); }
 }
 
 @media (max-width: 680px) {
-  .app-shell { display: block; padding-bottom: 63px; }.sidebar { position: fixed; inset: auto 0 0; width: 100%; height: 63px; padding: 7px 14px; flex-direction: row; background: #1c1e1b; }.brand, .sidebar-note, .copyright { display: none; }.main-nav { margin: 0; display: grid; grid-template-columns: repeat(3,1fr); width: 100%; }.nav-item { display: flex; flex-direction: column; gap: 2px; justify-content: center; padding: 5px; text-align: center; font-size: 9px; }.nav-item span:not(.nav-icon) { display: inline; }.nav-icon { font-size: 17px; }.main-content { width: 100%; }.topbar { height: 64px; padding: 0 18px; justify-content: space-between; }.mobile-brand { display: block; font: 700 16px "Noto Serif TC",serif; }.view { padding: 28px 16px 45px; }.welcome { min-height: 145px; }.welcome-stones { display: none; }.welcome h1, .page-heading h1 { font-size: 29px; }.mode-grid { grid-template-columns: 1fr; }.rule-grid { grid-template-columns: 1fr; }.rule-grid > div { border-right: 0; border-bottom: 1px solid var(--line); }.rule-grid > div:last-child { border-bottom: 0; }.page-heading { align-items: flex-start; gap: 20px; }.online-badge { white-space: nowrap; }.game-heading { grid-template-columns: 1fr auto; text-align: left; }.game-heading > div:nth-child(2) { grid-row: 2; grid-column: 1 / -1; margin-top: 20px; }.turn-pill { grid-column: 2; grid-row: 1; }.game-layout { display: block; }.board-card { padding: 8px; overflow: hidden; }.board { --cell: calc((100vw - 50px) / 14); }.game-panel { display: grid; grid-template-columns: 1fr; margin-top: 14px; }.players-card { grid-row: auto; }.difficulty-grid { grid-template-columns: 1fr; }.time-grid { grid-template-columns: 1fr 1fr; }.online-chat { grid-column: auto; }.modal form { padding: 28px 22px; }
+  .app-shell { display: block; padding-bottom: 63px; }.sidebar { position: fixed; inset: auto 0 0; width: 100%; height: 63px; padding: 7px 14px; flex-direction: row; background: #1c1e1b; }.brand, .sidebar-note, .copyright { display: none; }.main-nav { margin: 0; display: grid; grid-template-columns: repeat(3,1fr); width: 100%; }.nav-item { display: flex; flex-direction: column; gap: 2px; justify-content: center; padding: 5px; text-align: center; font-size: 9px; }.nav-item span:not(.nav-icon) { display: inline; }.nav-icon { font-size: 17px; }.main-content { width: 100%; }.topbar { height: 64px; padding: 0 18px; justify-content: space-between; }.mobile-brand { display: block; font: 700 16px "Noto Serif TC",serif; }.view { padding: 28px 16px 45px; }.welcome { min-height: 145px; }.welcome-stones { display: none; }.welcome h1, .page-heading h1 { font-size: 29px; }.mode-grid { grid-template-columns: 1fr; }.rule-grid { grid-template-columns: 1fr; }.rule-grid > div { border-right: 0; border-bottom: 1px solid var(--line); }.rule-grid > div:last-child { border-bottom: 0; }.page-heading { align-items: flex-start; gap: 20px; }.online-badge { white-space: nowrap; }.game-view { padding-left: 0; padding-right: 0; }.game-heading { grid-template-columns: 1fr auto; text-align: left; margin-left: 16px; margin-right: 16px; }.game-heading > div:nth-child(2) { grid-row: 2; grid-column: 1 / -1; margin-top: 20px; }.turn-pill { grid-column: 2; grid-row: 1; }.game-layout { display: block; }.board-card { width: 100%; padding: 0; border-left: 0; border-right: 0; overflow: hidden; }.board { --cell: calc(100vw / 15); }.game-panel { display: grid; grid-template-columns: 1fr; margin: 14px 16px 0; }.players-card { grid-row: auto; }.difficulty-grid { grid-template-columns: 1fr; }.time-grid { grid-template-columns: 1fr 1fr; }.online-chat { grid-column: auto; }.modal form { padding: 28px 22px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
