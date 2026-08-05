@@ -294,8 +294,8 @@ async function handleApi(req, res, url) {
     const hostDeviceId = String(body.hostDeviceId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
-    const aiFill = Boolean(body.aiFill);
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: aiFill ? "ready" : "waiting", players: [{ id: hostId, deviceId: hostDeviceId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
+    const aiFill = false;
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: maxPlayers === 1 ? "full" : "waiting", players: [{ id: hostId, deviceId: hostDeviceId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
   }
@@ -322,6 +322,7 @@ async function handleApi(req, res, url) {
       existingPlayer.deviceId = deviceId;
       existingPlayer.name = playerName;
     } else {
+      if (room.aiFill) return sendJson(res, 409, { error: "剩餘座位已由 AI 補滿" });
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
       room.players.push({ id: playerId, deviceId, name: playerName });
     }
@@ -330,6 +331,21 @@ async function handleApi(req, res, url) {
       room.gameId = game.id;
       room.status = "playing";
     } else room.status = room.players.length >= room.maxPlayers ? "full" : room.aiFill ? "ready" : "waiting";
+    room.updatedAt = Date.now();
+    return sendJson(res, 200, publicRoom(room));
+  }
+
+  const roomAiFillMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/ai-fill$/);
+  if (req.method === "POST" && roomAiFillMatch) {
+    const room = rooms.get(roomAiFillMatch[1]);
+    if (!room) return sendJson(res, 404, { error: "房間已關閉" });
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
+    if (room.maxPlayers < 3) return sendJson(res, 400, { error: "這個房間沒有可補的多人座位" });
+    if (room.players.length < 2) return sendJson(res, 409, { error: "請先等第二位真人玩家加入" });
+    room.aiFill = Boolean(body.aiFill) && room.players.length < room.maxPlayers;
+    room.status = room.players.length >= room.maxPlayers ? "full" : room.aiFill ? "ready" : "waiting";
     room.updatedAt = Date.now();
     return sendJson(res, 200, publicRoom(room));
   }

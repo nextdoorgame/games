@@ -1,27 +1,34 @@
 export const ARCADE_WIDTH = 800;
 export const ARCADE_HEIGHT = 500;
+const VOLLEY_COUNTDOWN_FRAMES = 180;
+const VOLLEY_PLAYER_Y = 332;
+const VOLLEY_SERVE_HEIGHT = 80;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export function createVolleyballState() {
-  return {
+  const game = {
     type: "volleyball",
-    players: [{ x: 145, y: 332, vx: 0, vy: 0, score: 0 }, { x: 655, y: 332, vx: 0, vy: 0, score: 0 }],
-    ball: { x: 240, y: 120, vx: 2.8, vy: -4.8 },
+    players: [{ x: 145, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0 }, { x: 655, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0 }],
+    ball: { x: 145, y: VOLLEY_PLAYER_Y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 },
     winner: null,
     serving: 0,
     roundDelay: 0,
-    countdown: 180,
+    countdown: VOLLEY_COUNTDOWN_FRAMES,
     frame: 0
   };
+  resetVolleyRound(game, 0);
+  return game;
 }
 
 function resetVolleyRound(game, serving) {
   game.serving = serving;
-  game.players[0].x = 145; game.players[0].y = 332; game.players[0].vx = 0; game.players[0].vy = 0;
-  game.players[1].x = 655; game.players[1].y = 332; game.players[1].vx = 0; game.players[1].vy = 0;
-  game.ball = { x: serving === 0 ? 230 : 570, y: 120, vx: serving === 0 ? 3 : -3, vy: -5.2 };
+  game.players[0].x = 145; game.players[0].y = VOLLEY_PLAYER_Y; game.players[0].vx = 0; game.players[0].vy = 0;
+  game.players[1].x = 655; game.players[1].y = VOLLEY_PLAYER_Y; game.players[1].vx = 0; game.players[1].vy = 0;
+  const server = game.players[serving];
+  game.ball = { x: server.x, y: server.y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 };
   game.roundDelay = 0;
+  game.countdown = VOLLEY_COUNTDOWN_FRAMES;
 }
 
 function volleyAi(game) {
@@ -63,10 +70,20 @@ function collideVolleyPlayer(game, index, input) {
 export function updateVolleyball(game, firstInput, secondInput, useAi = false) {
   if (game.winner !== null) return game;
   game.frame += 1;
-  if (game.countdown > 0) { game.countdown -= 1; return game; }
   if (game.roundDelay) {
     game.roundDelay -= 1;
     if (game.roundDelay <= 0) resetVolleyRound(game, game.serving);
+    return game;
+  }
+  if (game.countdown > 0) {
+    game.countdown -= 1;
+    const server = game.players[game.serving];
+    game.ball.x = server.x;
+    game.ball.y = server.y - VOLLEY_SERVE_HEIGHT;
+    if (game.countdown <= 0) {
+      game.ball.vx = game.serving === 0 ? 2.6 : -2.6;
+      game.ball.vy = -5.2;
+    }
     return game;
   }
   const inputs = [firstInput || {}, useAi ? volleyAi(game) : secondInput || {}];

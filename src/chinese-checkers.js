@@ -1,36 +1,39 @@
 export const CHECKER_COLORS = ["red", "blue", "gold"];
 const DIRECTIONS = [[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+const TRIANGLE_SIDE = 5;
+const CENTER_RADIUS = TRIANGLE_SIDE;
+const BOARD_EXTENT = CENTER_RADIUS + TRIANGLE_SIDE;
 
 function validCoord(q, r) {
   const s = -q-r;
-  if (Math.max(Math.abs(q),Math.abs(r),Math.abs(s)) <= 4) return true;
+  if (Math.max(Math.abs(q),Math.abs(r),Math.abs(s)) <= CENTER_RADIUS) return true;
   const arms = [
-    q >= 5 && q <= 8 && r <= -1 && r >= -4 && s >= -4 && s <= -1,
-    r >= 5 && r <= 8 && q <= -1 && q >= -4 && s >= -4 && s <= -1,
-    s >= 5 && s <= 8 && q <= -1 && q >= -4 && r >= -4 && r <= -1,
-    q <= -5 && q >= -8 && r >= 1 && r <= 4 && s >= 1 && s <= 4,
-    r <= -5 && r >= -8 && q >= 1 && q <= 4 && s >= 1 && s <= 4,
-    s <= -5 && s >= -8 && q >= 1 && q <= 4 && r >= 1 && r <= 4
+    q > CENTER_RADIUS && q <= BOARD_EXTENT && r <= -1 && r >= -TRIANGLE_SIDE && s >= -TRIANGLE_SIDE && s <= -1,
+    r > CENTER_RADIUS && r <= BOARD_EXTENT && q <= -1 && q >= -TRIANGLE_SIDE && s >= -TRIANGLE_SIDE && s <= -1,
+    s > CENTER_RADIUS && s <= BOARD_EXTENT && q <= -1 && q >= -TRIANGLE_SIDE && r >= -TRIANGLE_SIDE && r <= -1,
+    q < -CENTER_RADIUS && q >= -BOARD_EXTENT && r >= 1 && r <= TRIANGLE_SIDE && s >= 1 && s <= TRIANGLE_SIDE,
+    r < -CENTER_RADIUS && r >= -BOARD_EXTENT && q >= 1 && q <= TRIANGLE_SIDE && s >= 1 && s <= TRIANGLE_SIDE,
+    s < -CENTER_RADIUS && s >= -BOARD_EXTENT && q >= 1 && q <= TRIANGLE_SIDE && r >= 1 && r <= TRIANGLE_SIDE
   ];
   return arms.some(Boolean);
 }
 
 export const CHECKER_HOLES = (() => {
   const holes=[];
-  for(let q=-8;q<=8;q++) for(let r=-8;r<=8;r++) if(validCoord(q,r)) holes.push({q,r,key:`${q},${r}`});
+  for(let q=-BOARD_EXTENT;q<=BOARD_EXTENT;q++) for(let r=-BOARD_EXTENT;r<=BOARD_EXTENT;r++) if(validCoord(q,r)) holes.push({q,r,key:`${q},${r}`});
   return holes;
 })();
 const HOLE_SET = new Set(CHECKER_HOLES.map((hole)=>hole.key));
 
 const camps = [
-  CHECKER_HOLES.filter(({r})=>r<=-5),
-  CHECKER_HOLES.filter(({q})=>q<=-5),
-  CHECKER_HOLES.filter(({q,r})=>-q-r<=-5)
+  CHECKER_HOLES.filter(({r})=>r < -CENTER_RADIUS),
+  CHECKER_HOLES.filter(({q})=>q < -CENTER_RADIUS),
+  CHECKER_HOLES.filter(({q,r})=>-q-r < -CENTER_RADIUS)
 ];
 const targets = [
-  CHECKER_HOLES.filter(({r})=>r>=5),
-  CHECKER_HOLES.filter(({q})=>q>=5),
-  CHECKER_HOLES.filter(({q,r})=>-q-r>=5)
+  CHECKER_HOLES.filter(({r})=>r > CENTER_RADIUS),
+  CHECKER_HOLES.filter(({q})=>q > CENTER_RADIUS),
+  CHECKER_HOLES.filter(({q,r})=>-q-r > CENTER_RADIUS)
 ];
 
 export function createCheckersBoard(players=2) {

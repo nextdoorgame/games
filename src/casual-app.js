@@ -1,5 +1,5 @@
 import { DARK, LIGHT, applyReversiMove, chooseReversiMove, createReversiBoard, reversiLegalMoves, reversiWinner } from "./reversi.js?v=neighbor-2";
-import { CHECKER_COLORS, CHECKER_HOLES, applyCheckerMove, checkerMoves, checkersWinner, chooseCheckerMove, createCheckersBoard } from "./chinese-checkers.js?v=neighbor-2";
+import { CHECKER_COLORS, CHECKER_HOLES, applyCheckerMove, checkerMoves, checkersWinner, chooseCheckerMove, createCheckersBoard } from "./chinese-checkers.js?v=neighbor-3";
 import { dealMahjong, discardMahjong, drawMahjong, isMahjongWin, chooseMahjongDiscard } from "./mahjong.js?v=neighbor-2";
 import { dealBigTwo, playBigTwo, passBigTwo, chooseBigTwoPlay } from "./big-two.js?v=neighbor-2";
 import { applyBanqiAction, banqiActions, chooseBanqiAction, createBanqiState } from "./banqi.js?v=neighbor-2";
@@ -7,8 +7,8 @@ import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseCh
 import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
 import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
-import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-6";
-import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-6";
+import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-7";
+import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-7";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 
 const GAMES = {
@@ -33,7 +33,7 @@ const GAME_RULES = {
   gomoku: { summary: "在 19×19 棋盤輪流落子，率先連成五子者獲勝。", steps: ["黑棋先手，雙方輪流在空的交叉點落下一子。", "橫、直或斜線連續五枚同色棋子即獲勝。", "棋子落下後不能移動；棋盤填滿且無五連則為和棋。"] },
   xiangqi: { summary: "紅方先行，以將死或困斃對方將帥為目標。", steps: ["車走直線、馬走日、象走田、士守九宮、炮隔子吃棋。", "將與帥不能在同一直線直接照面。", "讓對方將帥無法解除被攻擊狀態即可獲勝。"] },
   reversi: { summary: "夾住對方棋子並翻成自己的顏色。", steps: ["落子後必須至少在一個方向夾住對方棋子。", "被夾住的棋子全部翻成落子方顏色。", "雙方都無合法落點時結束，棋子較多者獲勝。"] },
-  checkers: { summary: "移動或連跳棋子，率先把全部棋子送到對面營區。", steps: ["每回合可走到相鄰空位，或跳過相鄰棋子到後方空位。", "一次回合可連續跳躍，但不能停在已有棋子的洞位。", "全部棋子進入正對面的目標營區即獲勝。"] },
+  checkers: { summary: "使用邊長 5 格的三角營區，率先把 15 枚棋子送到對面。", steps: ["每回合可走到相鄰空位，或跳過相鄰棋子到後方空位。", "一次回合可連續跳躍，但不能停在已有棋子的洞位。", "全部 15 枚棋子進入正對面的目標營區即獲勝。"] },
   mahjong: { summary: "家庭自摸版麻將，湊成四組面子加一對將。", steps: ["使用 136 張牌，不含花牌；每位玩家起手 13 張。", "輪到自己時摸一張牌，再打出一張。", "四組順子或刻子加一對相同牌即可自摸胡牌。"] },
   bigtwo: { summary: "以 3♦ 首攻，率先出完手牌者獲勝。", steps: ["可出單張、對子、三條或合法五張牌型。", "點數由 3 到 2，花色由方塊、梅花、紅心到黑桃。", "必須壓過桌面牌型；無法或不想出牌時可選擇過牌。"] },
   banqi: { summary: "翻開暗棋決定陣營，移動並吃掉對方棋子。", steps: ["第一枚翻開的棋子決定玩家陣營。", "一般棋子每次走一格；炮必須隔一枚棋子才能吃子。", "依階級吃子，兵可吃將而將不能吃兵；消滅對方即獲勝。"] },
@@ -43,7 +43,7 @@ const GAME_RULES = {
   pickred: { summary: "從桌面湊成十點吃牌，累積紅色牌分數。", steps: ["輪流從手牌打出一張，能與桌面牌湊成十點時可吃走。", "J、Q、K 依遊戲設定配對同點數牌。", "牌局結束後計算吃到的紅心與方塊牌，分數最高者獲勝。"] },
   ninetynine: { summary: "輪流出牌累加點數，總數不能超過 99。", steps: ["每回合打出一張牌並依牌面效果調整總點數。", "部分牌可指定加減或改變出牌方向。", "無法合法出牌或使總數超過 99 的玩家淘汰，最後存活者獲勝。"] },
   tetris: { summary: "移動與旋轉方塊，完成橫列來消除得分。", steps: ["方向鍵左右移動，↑ 旋轉，↓ 軟降，空白鍵硬降。", "填滿完整橫列後該列會消除並增加分數。", "方塊堆到棋盤頂端即結束；雙人房可同步查看對手進度。"] },
-  volleyball: { summary: "移動、跳躍與扣球，率先得到 7 分。", steps: ["方向鍵左右移動，↑ 跳躍，↓ 或空白鍵扣球。", "讓球落在對方場地即可得 1 分。", "球不能穿過球網；率先得到 7 分者獲勝。"] },
+  volleyball: { summary: "移動、跳躍與扣球，率先得到 7 分。", steps: ["每球開始前倒數 3 秒，球會放在發球玩家頭頂。", "方向鍵左右移動，↑ 跳躍，↓ 或空白鍵扣球。", "讓球落在對方場地即可得 1 分；率先得到 7 分者獲勝。"] },
   racing: { summary: "避開障礙並保留耐久，跑出更高分數。", steps: ["使用方向鍵控制車輛左右與加減速。", "撞上三角錐、油漬或路障會損失耐久與分數。", "抵達終點或有人耐久歸零時，以耐久與分數判定勝負。"] }
 };
 
@@ -56,12 +56,14 @@ const duelInviteLobby = document.querySelector("#duelInviteLobby");
 const roomCount = document.querySelector("#roomPlayerCount");
 const roomName = document.querySelector("#roomNameInput");
 const roomOnlinePlayers = document.querySelector("#roomOnlinePlayers");
-const roomAi = document.querySelector("#roomAiFill");
 const roomWaitingDialog = document.querySelector("#roomWaitingDialog");
 const waitingRoomTitle = document.querySelector("#waitingRoomTitle");
 const waitingRoomStatus = document.querySelector("#waitingRoomStatus");
 const waitingRoomPlayers = document.querySelector("#waitingRoomPlayers");
 const waitingRoomAi = document.querySelector("#waitingRoomAi");
+const waitingRoomAiChoice = document.querySelector("#waitingRoomAiChoice");
+const waitForHumanPlayers = document.querySelector("#waitForHumanPlayers");
+const fillRoomWithAi = document.querySelector("#fillRoomWithAi");
 const enterRoomGame = document.querySelector("#enterRoomGame");
 const gameRulesDialog = document.querySelector("#gameRulesDialog");
 const gameRulesTitle = document.querySelector("#gameRulesTitle");
@@ -125,7 +127,6 @@ function setRoomGame(game) {
   roomLobbyLayout.hidden = false;
   tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.game === roomGame));
   roomCount.replaceChildren(...GAMES[roomGame].players.map((count) => { const option = document.createElement("option"); option.value = count; option.textContent = `${count} 人`; return option; }));
-  roomAi.closest("label").hidden = !["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame);
   renderRooms();
 }
 async function roomRequest(path, options = {}) {
@@ -147,6 +148,7 @@ function renderWaitingRoom(room) {
   const maxPlayers = room.maxPlayers || room.max || game.players.at(-1);
   const aiSeats = room.aiFill ? Math.max(0, maxPlayers - players.length) : 0;
   const isDuel = ["gomoku", "xiangqi"].includes(room.gameType);
+  const canChooseAi = maxPlayers >= 3 && players.length >= 2 && players.length < maxPlayers;
   pendingRoom = room;
   waitingRoomTitle.textContent = `${game.name}・${room.name}`;
   waitingRoomStatus.textContent = `${players.length}/${maxPlayers} 位真人已進房`;
@@ -160,6 +162,11 @@ function renderWaitingRoom(room) {
     return item;
   }));
   waitingRoomAi.textContent = aiSeats ? `剩餘 ${aiSeats} 個位置會由 AI 補上。` : players.length < maxPlayers ? `正在等待 ${maxPlayers - players.length} 位玩家加入…` : "所有真人玩家都已到齊。";
+  waitingRoomAiChoice.hidden = !canChooseAi;
+  waitForHumanPlayers.classList.toggle("selected", canChooseAi && !room.aiFill);
+  fillRoomWithAi.classList.toggle("selected", canChooseAi && room.aiFill);
+  waitForHumanPlayers.setAttribute("aria-pressed", String(canChooseAi && !room.aiFill));
+  fillRoomWithAi.setAttribute("aria-pressed", String(canChooseAi && room.aiFill));
   enterRoomGame.disabled = isDuel ? !room.gameId : !room.aiFill && players.length < maxPlayers;
   enterRoomGame.textContent = isDuel ? room.gameId ? "進入線上對局 →" : "等待另一位玩家…" : enterRoomGame.disabled ? "等待玩家到齊…" : "進入遊戲設定 →";
 }
@@ -204,8 +211,8 @@ async function renderRooms() {
     const aiSeats = room.ai ? Math.max(0, room.max - room.current) : 0;
     const spans = row.querySelectorAll("span"); spans[0].textContent = `${room.current}/${room.max}`; spans[1].textContent = `${room.players?.map((player) => player.name).join("、") || GAMES[roomGame].mode}${aiSeats ? ` ＋ ${aiSeats} AI` : ""}`; spans[2].textContent = room.status;
     const button = row.querySelector("button");
-    button.textContent = room.gameId && isMember ? "進入對局" : isMember ? "進入房間" : room.current >= room.max ? "房間已滿" : "加入房間";
-    button.disabled = !isMember && room.current >= room.max;
+    button.textContent = room.gameId && isMember ? "進入對局" : isMember ? "進入房間" : room.ai ? "AI 已補滿" : room.current >= room.max ? "房間已滿" : "加入房間";
+    button.disabled = !isMember && (room.ai || room.current >= room.max);
     if (room.gameId && isMember && !enteringOnlineGameId && document.querySelector("#lobbyView").classList.contains("active")) {
       enteringOnlineGameId = room.gameId;
       window.GOMOKU_ONLINE?.startGame(room.gameId).catch((error) => { enteringOnlineGameId = null; toast(error.message); });
@@ -230,7 +237,7 @@ async function renderRooms() {
 tabs.replaceChildren(...Object.entries(GAMES).map(([key, game]) => { const button = document.createElement("button"); button.type = "button"; button.dataset.game = key; button.textContent = game.name; button.addEventListener("click", () => setRoomGame(key)); return button; }));
 document.querySelectorAll(".room-game-button").forEach((button) => button.addEventListener("click", () => setRoomGame(button.dataset.roomGame)));
 document.querySelector("#createRoom").addEventListener("click", async () => {
-  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = ["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame) && roomAi.checked;
+  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = false;
   try {
     let createdRoom = null;
     if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostDeviceId: roomDeviceId, hostName: roomPlayerName() }) });
@@ -244,6 +251,26 @@ window.setInterval(() => { if (document.querySelector("#lobbyView").classList.co
 
 roomWaitingDialog.addEventListener("close", stopRoomWaiting);
 roomWaitingDialog.addEventListener("cancel", stopRoomWaiting);
+async function chooseRoomAiFill(aiFill) {
+  if (!pendingRoom || pendingRoom.maxPlayers < 3 || pendingRoom.players.length < 2) return;
+  try {
+    if (ROOM_API && !pendingRoom.id.startsWith("local-")) {
+      const room = await roomRequest(`/api/rooms/${pendingRoom.id}/ai-fill`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, aiFill }) });
+      renderWaitingRoom(room);
+    } else {
+      pendingRoom.aiFill = aiFill;
+      pendingRoom.ai = aiFill;
+      const rooms = storedRooms();
+      const savedRoom = rooms.find((room) => room.id === pendingRoom.id);
+      if (savedRoom) { savedRoom.aiFill = aiFill; savedRoom.ai = aiFill; saveRooms(rooms); }
+      renderWaitingRoom(pendingRoom);
+    }
+    await renderRooms();
+    toast(aiFill ? "AI 會補滿剩餘座位" : "將繼續等待真人玩家");
+  } catch (error) { toast(error.message); }
+}
+waitForHumanPlayers.addEventListener("click", () => chooseRoomAiFill(false));
+fillRoomWithAi.addEventListener("click", () => chooseRoomAiFill(true));
 enterRoomGame.addEventListener("click", async () => {
   if (!pendingRoom || enterRoomGame.disabled) return;
   if (pendingRoom.gameId && ["gomoku", "xiangqi"].includes(pendingRoom.gameType)) {
@@ -317,10 +344,10 @@ function renderReversi() {
 function advanceReversi() { const other = state.turn === DARK ? LIGHT : DARK; if (reversiLegalMoves(state.board, other).length) state.turn = other; else if (!reversiLegalMoves(state.board, state.turn).length) state.finished = true; renderReversi(); if (!state.finished && state.turn === LIGHT) schedule(() => { const move = chooseReversiMove(state.board, LIGHT, state.difficulty); if (move !== null) state.board = applyReversiMove(state.board, move, LIGHT).board; advanceReversi(); }); }
 function playReversi(index) { if (state.turn !== DARK || state.finished) return; const result = applyReversiMove(state.board, index, DARK); if (!result) return; state.board = result.board; advanceReversi(); }
 
-function startCheckers(total) { state = { ...state, total, board: createCheckersBoard(total), turn: 0, selected: null, legal: [], winner: 0 }; rulesEl.textContent = "你是玩家 1，其餘座位由 AI 補齊；可走相鄰空位或跨過任一棋子連續跳躍，先把全部棋子移入對面營區者獲勝。"; renderCheckers(); }
+function startCheckers(total) { state = { ...state, total, board: createCheckersBoard(total), turn: 0, selected: null, legal: [], winner: 0 }; rulesEl.textContent = "每個三角營區邊長 5 格；你是玩家 1，其餘座位由 AI 補齊。可走相鄰空位或跨過任一棋子連續跳躍，先把全部棋子移入對面營區者獲勝。"; renderCheckers(); }
 function renderCheckers() {
   boardEl.innerHTML = '<div class="checker-board"></div>'; const surface = boardEl.firstElementChild;
-  CHECKER_HOLES.forEach((hole) => { const button = document.createElement("button"); button.type = "button"; button.className = `checker-hole${state.selected === hole.key ? " selected" : ""}${state.legal.includes(hole.key) ? " legal" : ""}`; button.style.left = `${50 + (hole.q + hole.r / 2) * 5.5}%`; button.style.top = `${50 + hole.r * 4.8}%`; const owner = state.board[hole.key]; button.ariaLabel = owner ? `玩家 ${owner} 的跳棋，位置 ${hole.key}` : `空位 ${hole.key}`; if (owner) { const piece = document.createElement("i"); piece.className = `checker-piece ${CHECKER_COLORS[owner - 1]}`; button.append(piece); } button.addEventListener("click", () => clickChecker(hole.key)); surface.append(button); });
+  CHECKER_HOLES.forEach((hole) => { const button = document.createElement("button"); button.type = "button"; button.className = `checker-hole${state.selected === hole.key ? " selected" : ""}${state.legal.includes(hole.key) ? " legal" : ""}`; button.style.left = `${50 + (hole.q + hole.r / 2) * 4.7}%`; button.style.top = `${50 + hole.r * 4.45}%`; const owner = state.board[hole.key]; button.ariaLabel = owner ? `玩家 ${owner} 的跳棋，位置 ${hole.key}` : `空位 ${hole.key}`; if (owner) { const piece = document.createElement("i"); piece.className = `checker-piece ${CHECKER_COLORS[owner - 1]}`; button.append(piece); } button.addEventListener("click", () => clickChecker(hole.key)); surface.append(button); });
   setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: i === 0 ? "你" : `AI ${i}`, detail: `${Object.values(state.board).filter((x) => x === i + 1).length} 棋`, color: ["#b94136", "#315b88", "#d5a72d"][i] })), state.turn); turnEl.textContent = state.winner ? "本局結束" : state.turn === 0 ? "輪到你了" : `AI ${state.turn} 思考`; statusEl.textContent = state.winner ? `${state.winner === 1 ? "你" : `AI ${state.winner - 1}`} 完成換位，獲得勝利！` : state.turn === 0 ? "選擇自己的棋子，再選擇綠色目標。" : "AI 正在規劃連跳路線。";
 }
 function clickChecker(key) { if (state.winner || state.turn !== 0) return; if (state.legal.includes(key)) { state.board = applyCheckerMove(state.board, state.selected, key); state.selected = null; state.legal = []; finishCheckerTurn(); return; } if (state.board[key] === 1) { state.selected = key; state.legal = checkerMoves(state.board, key); } else { state.selected = null; state.legal = []; } renderCheckers(); }

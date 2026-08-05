@@ -1,4 +1,4 @@
-import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-6";
+import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-7";
 
 function pixelText(ctx, text, x, y, size = 22, align = "left", color = "#fff") {
   ctx.save(); ctx.font = `700 ${size}px monospace`; ctx.textAlign = align; ctx.textBaseline = "middle";
@@ -48,7 +48,7 @@ export function drawVolleyball(canvas, game) {
     const count = Math.max(1, Math.ceil(game.countdown / 60));
     ctx.fillStyle = "rgba(24,30,26,.42)"; ctx.fillRect(310, 155, 180, 130);
     pixelText(ctx, String(count), 400, 207, 66, "center", "#ffe369");
-    pixelText(ctx, "準備開始", 400, 265, 16, "center", "#fff");
+    pixelText(ctx, `玩家 ${game.serving + 1} 準備開球`, 400, 265, 16, "center", "#fff");
   }
   if (game.roundDelay && game.winner === null) pixelText(ctx, "得分！", 400, 115, 30, "center", "#fff3aa");
   if (game.winner !== null) { ctx.fillStyle = "rgba(24,30,26,.72)"; ctx.fillRect(190, 175, 420, 115); pixelText(ctx, `玩家 ${game.winner + 1} 獲勝`, 400, 222, 34, "center", "#ffe369"); pixelText(ctx, "按重新開始再來一局", 400, 264, 15, "center", "#fff"); }
