@@ -5,7 +5,7 @@ import { dealBigTwo, playBigTwo, passBigTwo, chooseBigTwoPlay } from "./big-two.
 import { applyBanqiAction, banqiActions, chooseBanqiAction, createBanqiState } from "./banqi.js?v=neighbor-2";
 import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseChessMove, createChessState, isChessCheck } from "./chess.js?v=neighbor-2";
 import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
-import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
+import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-3";
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-4";
 import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-11";
 import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-11";
@@ -108,10 +108,17 @@ let arcadeSyncInFlight = false;
 let tableSyncInFlight = false;
 let tablePendingCommit = null;
 let tableAiQueuedKey = null;
+let ninetyOptionAmount = null;
 let roomWaitingTimer = null;
 let launchingRoomId = null;
 let pendingJoinRoom = null;
 let isLeavingCasualRoom = false;
+let arcadeSocket = null;
+let arcadeSocketReconnectTimer = null;
+let arcadeSocketRetry = 0;
+let arcadeSocketLastHostFrame = -1;
+let arcadeSocketLastInput = "";
+let arcadeSocketLastInputAt = 0;
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
 const arcadeActionPulse = [0, 0];
@@ -453,7 +460,7 @@ document.querySelector("#startCasual").addEventListener("click", async () => {
 function setPlayers(items, active) {
   playersEl.replaceChildren(...items.map((item, index) => { const row = document.createElement("div"); row.className = `casual-player${index === active ? " active" : ""}`; row.style.setProperty("--player-color", item.color || "#777"); row.innerHTML = "<b></b><span></span>"; row.querySelector("b").textContent = item.name; row.querySelector("span").textContent = item.detail || ""; return row; }));
 }
-function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisCountdownTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); clearInterval(rewardMonitorTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisCountdownTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; rewardMonitorTimer = null; arcadeFrame = null; }
+function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisCountdownTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); clearInterval(rewardMonitorTimer); cancelAnimationFrame(arcadeFrame); stopArcadeSocket(); tetrisTimer = null; tetrisCountdownTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; rewardMonitorTimer = null; arcadeFrame = null; }
 
 function resetCasualSession() {
   clearTimeout(aiTimer);
@@ -463,6 +470,7 @@ function resetCasualSession() {
   selected.clear();
   tableAiQueuedKey = null;
   tablePendingCommit = null;
+  ninetyOptionAmount = null;
   tetrisSyncInFlight = false;
   arcadeSyncInFlight = false;
   tableSyncInFlight = false;
@@ -579,7 +587,7 @@ async function syncTableRoom({ commit = false, initialize = false } = {}) {
     const preserved = { room: data.room, localSeat: state.localSeat, humanSeats: data.room.players.length, difficulty: state.difficulty, speed: state.speed, arcadeMode: state.arcadeMode };
     if (shouldApply) {
       state = { ...data.state, ...preserved, roomRevision: data.revision, roomReady: true };
-      selected.clear(); tableAiQueuedKey = null; renderTableGame(); maybeRunTableAi();
+      selected.clear(); ninetyOptionAmount = null; tableAiQueuedKey = null; renderTableGame(); maybeRunTableAi();
     } else {
       state.room = data.room; state.humanSeats = data.room.players.length; state.roomRevision = data.revision; state.roomReady = Boolean(data.state);
     }
@@ -696,10 +704,10 @@ function selectPickRed(cardId){if(!canControlTableSeat()||state.winner!==null)re
 function humanPickRed(cardId,targetId){if(!canControlTableSeat())return;state={...playPickRed(state,state.turn,cardId,targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();commitTableState();if(state.winner===null)queueTableAi(aiPickRed);}
 function aiPickRed(){if(!canRunTableAi())return;const move=choosePickRedPlay(state,state.turn);state={...playPickRed(state,state.turn,move.cardId,move.targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();commitTableState();if(state.winner===null)queueTableAi(aiPickRed,350);}
 
-function startNinetyNine(total){state={...state,...createNinetyNineState(total),playerCount:total};rulesEl.textContent="輪流出牌且總點數不可超過 99；A 加 1/11、4 反轉、10 加減 10、J 跳過、Q 加 20、K 直接設為 99，無合法牌者淘汰。";primary.hidden=false;primary.textContent="出牌";renderNinetyNine();}
-function renderNinetyNine(){const local=state.room?state.localSeat:0;boardEl.innerHTML='<div class="card-table ninetynine-table"><div class="ninety-total"></div><div class="ninety-last"></div><div class="player-card-hand"></div></div>';boardEl.querySelector(".ninety-total").textContent=state.total;const last=boardEl.querySelector(".ninety-last");last.textContent=state.lastPlay?`${state.lastPlay.card.rank}${state.lastPlay.card.suit}`:"尚未出牌";const hand=boardEl.querySelector(".player-card-hand");state.hands[local].forEach((card)=>{const button=cardButton(card,true);const legal=legalNinetyNinePlays(state,local).some((play)=>play.cardId===card.id);button.disabled=!legal||!canControlTableSeat();button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{if(!canControlTableSeat())return;selected.clear();selected.add(card.id);renderNinetyNine();});hand.append(button);});setPlayers(Array.from({length:state.hands.length},(_,i)=>({name:state.room?tableSeatName(i):i===0?"你":`AI ${i}`,detail:state.alive[i]?`${state.hands[i].length} 張`:"已淘汰",color:i===local?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":canControlTableSeat()?"輪到你了":`${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 出牌`;statusEl.textContent=state.winner!==null?`${state.room?tableSeatName(state.winner,true):state.winner===0?"你":`AI ${state.winner}`} 成為最後留在牌桌上的玩家！`:canControlTableSeat()?`目前 ${state.total} 點，選擇不超過 99 的牌。`:`等待 ${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 控制點數。`;primary.disabled=!canControlTableSeat()||!selected.size;}
-function humanNinetyNine(){if(state.game!=="ninetynine"||!canControlTableSeat()||!selected.size)return;state={...playNinetyNine(state,state.turn,[...selected][0]),game:"ninetynine",difficulty:state.difficulty,totalPlayers:state.total};selected.clear();renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine);}
-function aiNinetyNine(){if(!canRunTableAi())return;const move=chooseNinetyNinePlay(state,state.turn);if(move)state={...playNinetyNine(state,state.turn,move.cardId),game:"ninetynine",difficulty:state.difficulty};renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine,350);}
+function startNinetyNine(total){ninetyOptionAmount=null;state={...state,...createNinetyNineState(total),playerCount:total};rulesEl.textContent="輪流出牌且總點數不可超過 99；A 加 1/11、4 反轉、10 加減 10、J 跳過、Q 加減 20、K 直接設為 99，無合法牌者淘汰。";primary.hidden=false;primary.textContent="出牌";renderNinetyNine();}
+function renderNinetyNine(){const local=state.room?state.localSeat:0;boardEl.innerHTML='<div class="card-table ninetynine-table"><div class="ninety-total"></div><div class="ninety-last"></div><div class="ninety-option-choices" hidden></div><div class="player-card-hand"></div></div>';boardEl.querySelector(".ninety-total").textContent=state.total;const last=boardEl.querySelector(".ninety-last"),lastOption=state.lastPlay?.option;last.textContent=state.lastPlay?`${state.lastPlay.card.rank}${state.lastPlay.card.suit}${lastOption?.effect==="add"?` ${lastOption.amount>=0?"＋":"−"}${Math.abs(lastOption.amount)}`:""}`:"尚未出牌";const plays=legalNinetyNinePlays(state,local),selectedCardId=[...selected][0],selectedOptions=plays.filter((play)=>play.cardId===selectedCardId),choices=boardEl.querySelector(".ninety-option-choices");if(selectedOptions.length>1){choices.hidden=false;const label=document.createElement("span");label.textContent="選擇點數效果";choices.append(label,...selectedOptions.map((option)=>{const button=document.createElement("button");button.type="button";button.textContent=`${option.amount>=0?"＋":"−"}${Math.abs(option.amount)} → ${option.total}`;button.classList.toggle("selected",option.amount===ninetyOptionAmount);button.addEventListener("click",()=>{ninetyOptionAmount=option.amount;renderNinetyNine();});return button;}));}const hand=boardEl.querySelector(".player-card-hand");state.hands[local].forEach((card)=>{const button=cardButton(card,true);const cardOptions=plays.filter((play)=>play.cardId===card.id);button.disabled=!cardOptions.length||!canControlTableSeat();button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{if(!canControlTableSeat())return;selected.clear();selected.add(card.id);ninetyOptionAmount=cardOptions.length===1?cardOptions[0].amount:null;renderNinetyNine();});hand.append(button);});setPlayers(Array.from({length:state.hands.length},(_,i)=>({name:state.room?tableSeatName(i):i===0?"你":`AI ${i}`,detail:state.alive[i]?`${state.hands[i].length} 張`:"已淘汰",color:i===local?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":canControlTableSeat()?"輪到你了":`${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 出牌`;statusEl.textContent=state.winner!==null?`${state.room?tableSeatName(state.winner,true):state.winner===0?"你":`AI ${state.winner}`} 成為最後留在牌桌上的玩家！`:canControlTableSeat()?selectedOptions.length>1&&ninetyOptionAmount===null?"請選擇這張牌要增加或減少的點數。":`目前 ${state.total} 點，選擇不超過 99 的牌。`:`等待 ${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 控制點數。`;primary.disabled=!canControlTableSeat()||!selected.size||selectedOptions.length>1&&ninetyOptionAmount===null;}
+function humanNinetyNine(){if(state.game!=="ninetynine"||!canControlTableSeat()||!selected.size)return;state={...playNinetyNine(state,state.turn,[...selected][0],ninetyOptionAmount),game:"ninetynine",difficulty:state.difficulty,totalPlayers:state.total};selected.clear();ninetyOptionAmount=null;renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine);}
+function aiNinetyNine(){if(!canRunTableAi())return;const move=chooseNinetyNinePlay(state,state.turn);if(move)state={...playNinetyNine(state,state.turn,move.cardId,move.amount),game:"ninetynine",difficulty:state.difficulty};renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine,350);}
 
 function tetrisCellGrid(board, muted = false) {
   const grid = document.createElement("div");
@@ -864,6 +872,98 @@ function renderArcadeStatus() {
   else statusEl.textContent = state.game === "volleyball" ? "空中按空白鍵殺球；同時搭配方向鍵可控制平殺、斜上或斜下角度。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
 }
 
+function applyArcadeNetworkData(data) {
+  if (!isArcadeGame(state?.game) || !state.room || !data?.room || state.room.id !== data.room.id) return false;
+  state.room = data.room;
+  const remote = data.inputs?.find((item) => item.playerId !== roomPlayerId);
+  state.remoteInput = remote?.input || {};
+  if (state.onlineRole === "guest" && data.snapshot) {
+    state.engine = state.hasAuthoritativeSnapshot ? reconcileArcadeGuest(state.engine, data.snapshot, state.game) : structuredClone(data.snapshot);
+    state.hasAuthoritativeSnapshot = true;
+  }
+  const recovered = state.syncWarningShown;
+  state.syncFailures = 0;
+  state.syncWarningShown = false;
+  renderArcadeStatus();
+  if (recovered) toast("已恢復與對手的即時同步");
+  return true;
+}
+
+function arcadeSocketIsOpen() { return arcadeSocket?.readyState === WebSocket.OPEN; }
+
+function stopArcadeSocket() {
+  clearTimeout(arcadeSocketReconnectTimer);
+  arcadeSocketReconnectTimer = null;
+  const socket = arcadeSocket;
+  arcadeSocket = null;
+  if (socket && socket.readyState < WebSocket.CLOSING) socket.close(1000, "leaving game");
+  arcadeSocketRetry = 0;
+  arcadeSocketLastHostFrame = -1;
+  arcadeSocketLastInput = "";
+  arcadeSocketLastInputAt = 0;
+}
+
+function arcadeSocketUrl(roomId) {
+  const url = new URL(ROOM_API);
+  url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/ws/arcade`;
+  url.search = "";
+  url.searchParams.set("roomId", roomId);
+  url.searchParams.set("playerId", roomPlayerId);
+  return url.toString();
+}
+
+function connectVolleyballSocket() {
+  if (typeof WebSocket === "undefined" || state?.game !== "volleyball" || !state.room || !ROOM_API || arcadeSocket) return;
+  const roomId = state.room.id;
+  const socket = new WebSocket(arcadeSocketUrl(roomId));
+  arcadeSocket = socket;
+  socket.addEventListener("open", () => {
+    if (arcadeSocket !== socket || state?.game !== "volleyball" || state.room?.id !== roomId) return socket.close();
+    clearTimeout(arcadeSyncTimer);
+    arcadeSyncTimer = null;
+    arcadeSocketRetry = 0;
+    sendVolleyballSocketFrame(true);
+  });
+  socket.addEventListener("message", (event) => {
+    if (arcadeSocket !== socket) return;
+    try {
+      const data = JSON.parse(event.data);
+      if (data.type === "arcade-error") throw new Error(data.error || "即時同步失敗");
+      if (data.type === "arcade-state") applyArcadeNetworkData(data);
+    } catch (error) {
+      if (!state?.syncWarningShown) { state.syncWarningShown = true; toast(`即時同步異常：${error.message}`); }
+    }
+  });
+  socket.addEventListener("close", () => {
+    if (arcadeSocket !== socket) return;
+    arcadeSocket = null;
+    if (state?.game !== "volleyball" || state.room?.id !== roomId) return;
+    if (!arcadeSyncInFlight) arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
+    const retryDelay = Math.min(4_000, 400 * (2 ** Math.min(3, arcadeSocketRetry)));
+    arcadeSocketRetry += 1;
+    arcadeSocketReconnectTimer = setTimeout(connectVolleyballSocket, retryDelay);
+  });
+  socket.addEventListener("error", () => socket.close());
+}
+
+function sendVolleyballSocketFrame(force = false) {
+  if (!arcadeSocketIsOpen() || state?.game !== "volleyball" || !state.room || arcadeSocket.bufferedAmount > 64 * 1024) return;
+  const input = arcadeInput(0);
+  const inputKey = JSON.stringify(input);
+  const now = performance.now();
+  if (state.onlineRole === "guest" && !force && inputKey === arcadeSocketLastInput && now - arcadeSocketLastInputAt < 120) return;
+  if (state.onlineRole === "host" && !force && (state.engine.frame === arcadeSocketLastHostFrame || state.engine.frame % 2 !== 0)) return;
+  const payload = { input };
+  if (state.onlineRole === "host") {
+    payload.state = state.engine;
+    arcadeSocketLastHostFrame = state.engine.frame;
+  }
+  arcadeSocketLastInput = inputKey;
+  arcadeSocketLastInputAt = now;
+  arcadeSocket.send(JSON.stringify(payload));
+}
+
 function arcadeLoop() {
   if (!isArcadeGame(state?.game)) return;
   if (!state.arcadePaused) {
@@ -874,32 +974,22 @@ function arcadeLoop() {
     else if (state.game === "racing") updateRacing(state.engine, firstInput, secondInput, useAi);
     else updateBrickBreaker(state.engine, firstInput, secondInput, useAi && state.engine.mode !== "classic");
   }
+  if (state.game === "volleyball" && state.room) sendVolleyballSocketFrame();
   arcadeCanvasDraw();
   if (state.engine.frame % 10 === 0 || state.engine.winner !== null) renderArcadeStatus();
   arcadeFrame = requestAnimationFrame(arcadeLoop);
 }
 
 async function syncArcadeRoom() {
-  if (!isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSyncInFlight) return;
+  arcadeSyncTimer = null;
+  if (!isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSyncInFlight || state.game === "volleyball" && arcadeSocketIsOpen()) return;
   arcadeSyncInFlight = true;
   const roomId = state.room.id, gameType = state.game;
   try {
     const payload = { playerId: roomPlayerId, input: arcadeInput(0) };
     if (state.onlineRole === "host") payload.state = state.engine;
     const data = await roomRequest(`/api/rooms/${roomId}/arcade`, { method: "POST", body: JSON.stringify(payload) });
-    if (!isArcadeGame(state?.game) || state.room?.id !== data.room.id) return;
-    state.room = data.room;
-    const remote = data.inputs.find((item) => item.playerId !== roomPlayerId);
-    state.remoteInput = remote?.input || {};
-    if (state.onlineRole === "guest" && data.snapshot) {
-      state.engine = state.hasAuthoritativeSnapshot ? reconcileArcadeGuest(state.engine, data.snapshot, state.game) : structuredClone(data.snapshot);
-      state.hasAuthoritativeSnapshot = true;
-    }
-    const recovered = state.syncWarningShown;
-    state.syncFailures = 0;
-    state.syncWarningShown = false;
-    renderArcadeStatus();
-    if (recovered) toast("已恢復與對手的即時同步");
+    applyArcadeNetworkData(data);
   } catch (error) {
     if (state?.game !== gameType || state.room?.id !== roomId) return;
     state.syncFailures = (state.syncFailures || 0) + 1;
@@ -907,7 +997,7 @@ async function syncArcadeRoom() {
   } finally {
     arcadeSyncInFlight = false;
     const retryDelay = state?.syncFailures ? Math.min(1_500, 150 * (2 ** Math.min(3, state.syncFailures - 1))) : 50;
-    if (isArcadeGame(state?.game) && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, retryDelay);
+    if (isArcadeGame(state?.game) && state.room && ROOM_API && !(state.game === "volleyball" && arcadeSocketIsOpen()) && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, retryDelay);
   }
 }
 
@@ -919,14 +1009,19 @@ function startArcadeGame(game, players, room, arcadeMode = "classic") {
   boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
     const key = button.dataset.arcade;
-    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; if (key === "action") arcadeActionPulse[0] = Date.now() + 160; };
-    const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; };
+    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; if (key === "action") arcadeActionPulse[0] = Date.now() + 160; sendVolleyballSocketFrame(true); };
+    const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; sendVolleyballSocketFrame(true); };
     button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
   });
   rulesEl.textContent = game === "volleyball" ? (room ? "兩位玩家都在自己的裝置使用方向鍵移動、↑ 跳躍、空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋空白鍵可撲救。" : "玩家 1：方向鍵移動，空白鍵攻擊；玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。空中搭配方向可改變殺球角度。") : game === "racing" ? (room ? "兩位玩家都在自己的裝置使用方向鍵操作。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久。") : engine.mode === "classic" ? "使用 ←／→ 移動板子；開局與掉球後按空白鍵發球，球運行時按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : room ? "兩位玩家都在自己的裝置使用 ←／→ 移動、空白鍵發球／衝刺；合作模式共用生命，對戰模式先清空自己半場。" : "P1 使用 ←／→ 移動、空白鍵發球／衝刺；P2 使用 A／D 移動、F 或 Enter 發球／衝刺。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
-  if (room && ROOM_API) arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
+  if (room && ROOM_API) {
+    if (game === "volleyball" && typeof WebSocket !== "undefined") {
+      connectVolleyballSocket();
+      arcadeSyncTimer = setTimeout(syncArcadeRoom, 800);
+    } else arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
+  }
 }
 
 window.addEventListener("keydown", (event) => {
@@ -935,10 +1030,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault(); arcadeKeys[event.code] = true;
     if (event.code === "Space") arcadeActionPulse[0] = Date.now() + 160;
     if (["KeyF", "Enter"].includes(event.code)) arcadeActionPulse[1] = Date.now() + 160;
+    sendVolleyballSocketFrame(true);
   }
   if (event.code === "KeyP") { event.preventDefault(); state.arcadePaused = !state.arcadePaused; primary.textContent = state.arcadePaused ? "繼續遊戲" : "暫停遊戲"; renderArcadeStatus(); }
 });
-window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; } });
+window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; sendVolleyballSocketFrame(true); } });
 
 primary.addEventListener("click",()=>{if(isArcadeGame(state?.game)){state.arcadePaused=!state.arcadePaused;primary.textContent=state.arcadePaused?"繼續遊戲":"暫停遊戲";renderArcadeStatus();}else if(state?.game==="tetris"){if(state.startCountdownAt>Date.now())return;state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&canControlMahjongSeat()){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();commitTableState();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
 pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(!canControlTableSeat())return;const next=passBigTwo(state,state.turn);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();commitTableState();queueTableAi(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});

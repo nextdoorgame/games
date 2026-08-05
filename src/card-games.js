@@ -125,7 +125,7 @@ export function ninetyNineOptions(card, total) {
   if (card.rank === "A") options = [1,11];
   else if (card.rank === "4" || card.rank === "J") options = [0];
   else if (card.rank === "10") options = [10,-10];
-  else if (card.rank === "Q") options = [20];
+  else if (card.rank === "Q") options = [20,-20];
   else if (card.rank === "K") return total <= 99 ? [{ total: 99, effect: "set" }] : [];
   else options = [Number(card.rank)];
   return options.map((amount) => ({ total: total + amount, effect: card.rank === "4" ? "reverse" : card.rank === "J" ? "skip" : "add", amount })).filter((option) => option.total >= 0 && option.total <= 99);
@@ -147,11 +147,11 @@ export function legalNinetyNinePlays(state, player = state.turn) {
   return state.hands[player].flatMap((card) => ninetyNineOptions(card,state.total).map((option) => ({ cardId:card.id,...option })));
 }
 
-export function playNinetyNine(state, player, cardId) {
+export function playNinetyNine(state, player, cardId, amount) {
   if (state.winner !== null || state.turn !== player) return state;
   const card = state.hands[player].find((item)=>item.id===cardId), options = card ? ninetyNineOptions(card,state.total) : [];
   if (!options.length) return state;
-  const option = options.sort((a,b)=>a.total-b.total)[0];
+  const option = options.find((item) => item.amount === amount) || options.sort((a,b)=>a.total-b.total)[0];
   const next = { ...state, deck:[...state.deck], hands:state.hands.map((items)=>[...items]), alive:[...state.alive], total:option.total, lastPlay:{player,card,option} };
   next.hands[player]=next.hands[player].filter((item)=>item.id!==cardId);
   if(next.deck.length) next.hands[player].push(next.deck.pop());

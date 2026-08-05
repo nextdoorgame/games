@@ -3,6 +3,7 @@ import { extname, join, normalize } from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
+import WebSocket, { WebSocketServer } from "ws";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
 import { accountFromRequest, accountLedger, beginAiGame, canAffordWager, changeAccountPassword, finishAiGame, loginAccount, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
 
@@ -24,6 +25,7 @@ const players = new Map();
 const invites = new Map();
 const games = new Map();
 const rooms = new Map();
+const arcadeSockets = new Map();
 const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris", "volleyball", "racing", "brickbreaker"]);
 const DUEL_ROOM_TYPES = new Set(["gomoku", "xiangqi"]);
 const TABLE_ROOM_TYPES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine"]);
@@ -340,6 +342,46 @@ function safeTetrisSnapshot(value) {
     paused: Boolean(value.paused),
     updatedAt: Date.now()
   };
+}
+
+function arcadeResponse(room, { includeSnapshot = true } = {}) {
+  return {
+    room: publicRoom(room),
+    ...(includeSnapshot ? { snapshot: room.arcadeSnapshot } : {}),
+    inputs: [...room.arcadeInputs.entries()].map(([id, playerInput]) => ({
+      playerId: id,
+      input: { ...playerInput, action: playerInput.action || (room.arcadeActionUntil.get(id) || 0) > Date.now() }
+    }))
+  };
+}
+
+async function applyArcadeUpdate(room, playerId, body) {
+  room.arcadeInputs ||= new Map();
+  room.arcadeActionUntil ||= new Map();
+  const input = safeArcadeInput(body.input);
+  room.arcadeInputs.set(playerId, input);
+  if (input.action) room.arcadeActionUntil.set(playerId, Date.now() + 250);
+  let snapshotChanged = false;
+  if (room.players[0]?.id === playerId && body.state) {
+    const snapshot = safeArcadeSnapshot(body.state, room.gameType);
+    if (!snapshot) {
+      const error = new Error("遊戲狀態格式不正確");
+      error.status = 400;
+      throw error;
+    }
+    room.arcadeSnapshot = snapshot;
+    snapshotChanged = true;
+    if (Number.isInteger(snapshot.winner) && snapshot.winner >= 0) await settleRoomWager(room, snapshot.winner);
+  }
+  room.updatedAt = Date.now();
+  return arcadeResponse(room, { includeSnapshot: snapshotChanged });
+}
+
+function broadcastArcade(roomId, payload) {
+  const encoded = JSON.stringify({ type: "arcade-state", ...payload });
+  for (const socket of arcadeSockets.get(roomId) || []) {
+    if (socket.readyState === WebSocket.OPEN) socket.send(encoded);
+  }
 }
 
 function safeArcadeInput(value) {
@@ -769,19 +811,12 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const playerId = String(body.playerId || "").trim();
     if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
-    room.arcadeInputs ||= new Map();
-    room.arcadeActionUntil ||= new Map();
-    const input = safeArcadeInput(body.input);
-    room.arcadeInputs.set(playerId, input);
-    if (input.action) room.arcadeActionUntil.set(playerId, Date.now() + 250);
-    if (room.players[0]?.id === playerId && body.state) {
-      const snapshot = safeArcadeSnapshot(body.state, room.gameType);
-      if (!snapshot) return sendJson(res, 400, { error: "遊戲狀態格式不正確" });
-      room.arcadeSnapshot = snapshot;
-      if (Number.isInteger(snapshot.winner) && snapshot.winner >= 0) await settleRoomWager(room, snapshot.winner);
+    try {
+      await applyArcadeUpdate(room, playerId, body);
+      return sendJson(res, 200, arcadeResponse(room));
+    } catch (error) {
+      return sendJson(res, error.status || 400, { error: error.message });
     }
-    room.updatedAt = Date.now();
-    return sendJson(res, 200, { room: publicRoom(room), snapshot: room.arcadeSnapshot, inputs: [...room.arcadeInputs.entries()].map(([id, playerInput]) => ({ playerId: id, input: { ...playerInput, action: playerInput.action || (room.arcadeActionUntil.get(id) || 0) > Date.now() } })) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/lobby") {
@@ -1027,6 +1062,44 @@ export function startStaticServer({ preferredPort = 5173, host = "127.0.0.1", ro
       res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
       res.end("Not found");
     }
+  });
+
+  const arcadeWebSockets = new WebSocketServer({ noServer: true, maxPayload: 256 * 1024 });
+  server.on("upgrade", (request, socket, head) => {
+    const url = new URL(request.url || "/", `http://${request.headers.host || host}`);
+    if (url.pathname !== "/ws/arcade") return socket.destroy();
+    const roomId = String(url.searchParams.get("roomId") || "").trim();
+    const playerId = String(url.searchParams.get("playerId") || "").trim();
+    const room = rooms.get(roomId);
+    if (!room || !["volleyball", "racing", "brickbreaker"].includes(room.gameType) || !room.players.some((player) => player.id === playerId)) return socket.destroy();
+    arcadeWebSockets.handleUpgrade(request, socket, head, (webSocket) => {
+      webSocket.roomId = roomId;
+      webSocket.playerId = playerId;
+      arcadeWebSockets.emit("connection", webSocket);
+    });
+  });
+  arcadeWebSockets.on("connection", (socket) => {
+    const connections = arcadeSockets.get(socket.roomId) || new Set();
+    connections.add(socket);
+    arcadeSockets.set(socket.roomId, connections);
+    const room = rooms.get(socket.roomId);
+    if (room) socket.send(JSON.stringify({ type: "arcade-state", ...arcadeResponse(room) }));
+    socket.on("message", async (raw) => {
+      try {
+        const activeRoom = rooms.get(socket.roomId);
+        if (!activeRoom || !activeRoom.players.some((player) => player.id === socket.playerId)) return socket.close(1008, "room closed");
+        const body = JSON.parse(raw.toString());
+        const payload = await applyArcadeUpdate(activeRoom, socket.playerId, body);
+        broadcastArcade(socket.roomId, payload);
+      } catch (error) {
+        if (socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "arcade-error", error: error.message || "即時同步失敗" }));
+      }
+    });
+    socket.on("close", () => {
+      const active = arcadeSockets.get(socket.roomId);
+      active?.delete(socket);
+      if (!active?.size) arcadeSockets.delete(socket.roomId);
+    });
   });
 
   return new Promise((resolve, reject) => {
