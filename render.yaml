@@ -11,6 +11,8 @@ services:
       - key: HOST
         value: 0.0.0.0
       - key: ALLOWED_ORIGIN
-        value: https://tingchuchi.github.io
+        # The API uses player IDs in request bodies rather than cookies, so a
+        # wildcard safely supports both the legacy and nextdoorgame Pages sites.
+        value: "*"
       - key: NODE_ENV
         value: production
