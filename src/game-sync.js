@@ -3,5 +3,7 @@ export function shouldApplyOnlineSnapshot(currentGame, incomingGame) {
   const currentRevision = Number(currentGame.revision);
   const incomingRevision = Number(incomingGame.revision);
   if (!Number.isSafeInteger(currentRevision) || !Number.isSafeInteger(incomingRevision)) return true;
-  return incomingRevision >= currentRevision;
+  // Polling the same revision used to rebuild every stone/piece repeatedly,
+  // retriggering its entrance styles and producing visible flicker/ghosting.
+  return incomingRevision > currentRevision;
 }

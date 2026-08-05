@@ -1,4 +1,4 @@
-import { shouldApplyOnlineSnapshot } from "./game-sync.js";
+import { shouldApplyOnlineSnapshot } from "./game-sync.js?v=neighbor-2";
 import { deviceId, playerId } from "./player-identity.js?v=neighbor-8";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
@@ -734,6 +734,7 @@ async function fetchLobby() {
   isFetchingLobby = true;
   try {
     const data = await api(`/api/lobby?playerId=${encodeURIComponent(playerId)}&deviceId=${encodeURIComponent(deviceId)}&name=${encodeURIComponent(playerName)}`);
+    if (data.reconnectedRoom) showToast("已重新連線，正在回到原本的房間與座位");
     els.onlineCount.textContent = String(Math.max(0, data.onlineCount - 1));
     els.lobbyCount.textContent = String(Math.max(0, data.onlineCount - 1));
     renderPlayers(data.players);
@@ -885,7 +886,7 @@ async function startOnlineGame(gameId) {
   showView("game");
   await fetchOnlineGame(gameId);
   window.clearInterval(onlineTimer);
-  onlineTimer = window.setInterval(() => fetchOnlineGame(gameId), 800);
+  onlineTimer = window.setInterval(() => fetchOnlineGame(gameId), 200);
   window.clearInterval(onlineClockTimer);
   onlineClockTimer = window.setInterval(renderTurnClock, 250);
 }

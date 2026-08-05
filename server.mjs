@@ -229,6 +229,51 @@ function activeRoomFor(playerId) {
     .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
 }
 
+function rekeyRoomMap(map, oldId, newId) {
+  if (!(map instanceof Map) || oldId === newId || !map.has(oldId)) return;
+  const value = map.get(oldId);
+  map.delete(oldId);
+  map.set(newId, value);
+}
+
+function reconnectRoomPlayer({ playerId, deviceId = "", accountId = null, name = "" }) {
+  const room = [...rooms.values()]
+    .filter((candidate) => candidate.players.some((player) =>
+      player.id !== playerId && (deviceId && player.deviceId === deviceId || accountId && player.accountId === accountId)))
+    .sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  if (!room) return null;
+  const seat = room.players.find((player) => deviceId && player.deviceId === deviceId || accountId && player.accountId === accountId);
+  if (!seat) return null;
+  const oldId = seat.id;
+  seat.id = playerId;
+  seat.deviceId = deviceId || seat.deviceId;
+  seat.accountId = accountId || seat.accountId;
+  seat.name = name || seat.name;
+  rekeyRoomMap(room.snapshots, oldId, playerId);
+  rekeyRoomMap(room.arcadeInputs, oldId, playerId);
+  rekeyRoomMap(room.arcadeActionUntil, oldId, playerId);
+  const linkedGame = room.gameId ? games.get(room.gameId) : null;
+  if (linkedGame) {
+    const gamePlayer = linkedGame.players.find((player) => player.id === oldId);
+    if (gamePlayer) { gamePlayer.id = playerId; gamePlayer.name = seat.name; }
+    if (Object.hasOwn(linkedGame.scores, oldId)) {
+      linkedGame.scores[playerId] = linkedGame.scores[oldId];
+      delete linkedGame.scores[oldId];
+    }
+    linkedGame.rematchRequests = linkedGame.rematchRequests.map((id) => id === oldId ? playerId : id);
+    if (linkedGame.seriesWinnerId === oldId) linkedGame.seriesWinnerId = playerId;
+    if (linkedGame.rematchDeclinedBy === oldId) linkedGame.rematchDeclinedBy = playerId;
+    linkedGame.updatedAt = Date.now();
+    linkedGame.revision += 1;
+  }
+  for (const invite of invites.values()) {
+    if (invite.fromId === oldId) invite.fromId = playerId;
+    if (invite.toId === oldId) invite.toId = playerId;
+  }
+  room.updatedAt = Date.now();
+  return room;
+}
+
 function clearRoomInvites(roomId) {
   for (const [inviteId, invite] of invites) if (invite.roomId === roomId) invites.delete(inviteId);
 }
@@ -749,6 +794,7 @@ async function handleApi(req, res, url) {
     players.set(playerId, { id: playerId, deviceId, name, accountId: account?.id || null, seenAt: Date.now() });
     cleanupLobby();
     for (const room of rooms.values()) ensureRoomLaunched(room);
+    const reconnectedRoom = activeRoomFor(playerId) ? null : reconnectRoomPlayer({ playerId, deviceId, accountId: account?.id || null, name });
     const incomingInvites = [...invites.values()].filter((invite) => invite.toId === playerId && invite.status === "pending");
     const outgoingInvites = [...invites.values()].filter((invite) => invite.fromId === playerId && invite.status === "pending");
     const activeGame = activeGameFor(playerId);
@@ -759,7 +805,8 @@ async function handleApi(req, res, url) {
       incomingInvites,
       outgoingInvites,
       activeGame: activeGame?.id || null,
-      activeRoom: activeRoom ? publicRoom(activeRoom) : null
+      activeRoom: activeRoom ? publicRoom(activeRoom) : null,
+      reconnectedRoom: Boolean(reconnectedRoom)
     });
   }
 

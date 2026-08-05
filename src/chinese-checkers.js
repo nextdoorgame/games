@@ -52,6 +52,16 @@ function playerTarget(player,players){
   return targets[player];
 }
 
+function progressAxis(key, player) {
+  const [q, r] = key.split(",").map(Number);
+  return player === 0 ? r : player === 1 ? q : -q-r;
+}
+
+function isOpponentCamp(key, player, players) {
+  return Array.from({ length: players }, (_, index) => index)
+    .some((other) => other !== player && playerCamp(other, players).some((hole) => hole.key === key));
+}
+
 function neighbors(key, distance=1) {
   const [q,r]=key.split(",").map(Number);
   return DIRECTIONS.map(([dq,dr])=>`${q+dq*distance},${r+dr*distance}`).filter((next)=>HOLE_SET.has(next));
@@ -59,13 +69,16 @@ function neighbors(key, distance=1) {
 
 export function checkerMoves(board, from) {
   if(!board[from]) return [];
-  const results=new Set(neighbors(from).filter((key)=>!board[key]));
+  const player = board[from] - 1;
+  const players = Math.max(...Object.values(board));
+  const allowed = (key) => !isOpponentCamp(key, player, players);
+  const results=new Set(neighbors(from).filter((key)=>!board[key] && allowed(key)));
   const seen=new Set([from]);
   const visit=(position)=>{
     const [q,r]=position.split(",").map(Number);
     DIRECTIONS.forEach(([dq,dr])=>{
       const middle=`${q+dq},${r+dr}`,landing=`${q+dq*2},${r+dr*2}`;
-      if(HOLE_SET.has(landing) && board[middle] && !board[landing] && !seen.has(landing)) { seen.add(landing); results.add(landing); visit(landing); }
+      if(HOLE_SET.has(landing) && board[middle] && !board[landing] && allowed(landing) && !seen.has(landing)) { seen.add(landing); results.add(landing); visit(landing); }
     });
   };
   visit(from);
@@ -78,13 +91,15 @@ export function applyCheckerMove(board,from,to){
 }
 
 export function checkersWinner(board,players=2){
-  for(let player=0;player<players;player++) if(playerTarget(player,players).every(({key})=>board[key]===player+1)) return player+1;
+  for(let player=0;player<players;player++) {
+    const pieces = Object.entries(board).filter(([, owner])=>owner===player+1).map(([key])=>key);
+    if(pieces.length && pieces.every((key)=>progressAxis(key,player)>0)) return player+1;
+  }
   return 0;
 }
 
 function targetDistance(key,player,players){
-  const [q,r]=key.split(",").map(Number); const goals=playerTarget(player,players);
-  return Math.min(...goals.map((g)=>Math.max(Math.abs(q-g.q),Math.abs(r-g.r),Math.abs((-q-r)-(-g.q-g.r)))));
+  return -progressAxis(key,player);
 }
 
 export function chooseCheckerMove(board,player){
