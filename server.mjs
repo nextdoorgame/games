@@ -229,6 +229,55 @@ function activeRoomFor(playerId) {
     .sort((a, b) => b.updatedAt - a.updatedAt)[0] || null;
 }
 
+function clearRoomInvites(roomId) {
+  for (const [inviteId, invite] of invites) if (invite.roomId === roomId) invites.delete(inviteId);
+}
+
+async function leaveRoom(room, playerId) {
+  const seat = room?.players.findIndex((player) => player.id === playerId) ?? -1;
+  if (!room || seat < 0) return false;
+
+  // Once a synchronized match has begun, seat numbers are part of its state.
+  // Closing that room releases every participant and avoids shifting a player
+  // into another seat halfway through a board, card, or arcade game.
+  if (["starting", "playing"].includes(room.status)) {
+    const opponentSeat = room.players.length === 2 ? (seat === 0 ? 1 : 0) : -1;
+    if (opponentSeat >= 0) await settleRoomWager(room, opponentSeat);
+    const linkedGame = room.gameId ? games.get(room.gameId) : null;
+    if (linkedGame && linkedGame.matchStatus !== "closed") {
+      const opponent = linkedGame.players.find((player) => player.id !== playerId);
+      if (linkedGame.status === "playing" && opponent) {
+        linkedGame.status = "finished";
+        linkedGame.winner = opponent.color;
+      }
+      linkedGame.matchStatus = "closed";
+      linkedGame.rematchDeclinedBy = playerId;
+      linkedGame.turnStartedAt = null;
+      linkedGame.revision += 1;
+      linkedGame.updatedAt = Date.now();
+    }
+    clearRoomInvites(room.id);
+    rooms.delete(room.id);
+    return true;
+  }
+
+  room.players.splice(seat, 1);
+  room.aiFill = false;
+  room.launchAt = null;
+  room.launchConfig = null;
+  room.updatedAt = Date.now();
+  if (!room.players.length) {
+    clearRoomInvites(room.id);
+    rooms.delete(room.id);
+  } else {
+    room.status = room.players.length >= room.maxPlayers ? "full" : "waiting";
+    for (const [inviteId, invite] of invites) {
+      if (invite.roomId === room.id && (invite.fromId === playerId || invite.toId === playerId)) invites.delete(inviteId);
+    }
+  }
+  return true;
+}
+
 function safeTetrisSnapshot(value) {
   if (!value || !Array.isArray(value.board) || value.board.length !== 20) return null;
   const board = value.board.map((row) => Array.isArray(row) && row.length === 10 ? row.map((cell) => Math.max(0, Math.min(7, Number(cell) || 0))) : null);
@@ -518,6 +567,25 @@ async function handleApi(req, res, url) {
     });
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/rooms/leave-active") {
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    if (!playerId) return sendJson(res, 400, { error: "缺少玩家資料" });
+    const room = activeRoomFor(playerId);
+    if (room) await leaveRoom(room, playerId);
+    return sendJson(res, 200, { left: Boolean(room), roomId: room?.id || null });
+  }
+
+  const roomLeaveMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/leave$/);
+  if (req.method === "POST" && roomLeaveMatch) {
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    if (!playerId) return sendJson(res, 400, { error: "缺少玩家資料" });
+    const room = rooms.get(roomLeaveMatch[1]);
+    if (room) await leaveRoom(room, playerId);
+    return sendJson(res, 200, { left: Boolean(room), roomId: room?.id || null });
   }
 
   const roomDetailMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);

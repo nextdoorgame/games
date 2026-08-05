@@ -131,6 +131,7 @@ let lastAutomaticMoveKey = "";
 let pendingSingleGameType = "gomoku";
 let preferredOnlineGameType = "gomoku";
 let lastActiveRoomSignal = "";
+let isLeavingGame = false;
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -737,6 +738,10 @@ async function fetchLobby() {
     els.lobbyCount.textContent = String(Math.max(0, data.onlineCount - 1));
     renderPlayers(data.players);
     window.dispatchEvent(new CustomEvent("neighbor-online-players", { detail: data.players }));
+    if (!data.activeRoom) {
+      lastActiveRoomSignal = "";
+      window.NEIGHBOR_PENDING_ROOM = null;
+    }
     pendingInvites = new Set(data.outgoingInvites.map((invite) => invite.toId));
     if (data.activeGame && gameMode !== "online") {
       await startOnlineGame(data.activeGame);
@@ -1050,6 +1055,12 @@ async function endCurrentSeries() {
   cancelAiMove();
   window.clearInterval(onlineTimer);
   window.clearInterval(onlineClockTimer);
+  if (gameMode === "online") {
+    try { await api("/api/rooms/leave-active", { method: "POST", body: JSON.stringify({ playerId }) }); }
+    catch { /* A room that another player already closed is safe to leave locally. */ }
+    lastActiveRoomSignal = "";
+    window.NEIGHBOR_PENDING_ROOM = null;
+  }
   const destination = gameMode === "online" ? "lobby" : "home";
   gameMode = null;
   game = null;
@@ -1057,25 +1068,38 @@ async function endCurrentSeries() {
   showView(destination);
 }
 
-async function leaveCurrentGame() {
+async function leaveCurrentGame(destinationOverride = null) {
+  if (isLeavingGame) return;
+  isLeavingGame = true;
   cancelAiMove();
   window.clearInterval(onlineTimer);
   window.clearInterval(onlineClockTimer);
-  if (gameMode === "online" && game?.status === "playing") {
-    try {
-      await api(`/api/game/${encodeURIComponent(game.id)}/resign`, { method: "POST", body: JSON.stringify({ playerId }) });
-    } catch { /* The lobby remains usable if a stale game already ended. */ }
-  } else if (gameMode === "online" && game?.id && game.matchStatus !== "closed") {
-    try {
-      await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: false }) });
-    } catch { /* The lobby remains usable if the match already closed. */ }
+  const wasOnline = gameMode === "online";
+  try {
+    if (wasOnline && game?.status === "playing") {
+      try {
+        await api(`/api/game/${encodeURIComponent(game.id)}/resign`, { method: "POST", body: JSON.stringify({ playerId }) });
+      } catch { /* The lobby remains usable if a stale game already ended. */ }
+    } else if (wasOnline && game?.id && game.matchStatus !== "closed") {
+      try {
+        await api(`/api/game/${encodeURIComponent(game.id)}/rematch`, { method: "POST", body: JSON.stringify({ playerId, accept: false }) });
+      } catch { /* The lobby remains usable if the match already closed. */ }
+    }
+    if (wasOnline) {
+      try { await api("/api/rooms/leave-active", { method: "POST", body: JSON.stringify({ playerId }) }); }
+      catch { /* A room that another player already closed is safe to leave locally. */ }
+    }
+  } finally {
+    const destination = typeof destinationOverride === "string" ? destinationOverride : wasOnline ? "lobby" : "home";
+    lastActiveRoomSignal = "";
+    window.NEIGHBOR_PENDING_ROOM = null;
+    gameMode = null;
+    game = null;
+    series = null;
+    if (els.roundEndDialog.open) els.roundEndDialog.close();
+    showView(destination);
+    isLeavingGame = false;
   }
-  const destination = gameMode === "online" ? "lobby" : "home";
-  gameMode = null;
-  game = null;
-  series = null;
-  if (els.roundEndDialog.open) els.roundEndDialog.close();
-  showView(destination);
 }
 
 function stopLobbyPolling() {
@@ -1133,6 +1157,10 @@ document.addEventListener("click", (event) => {
   if (viewTrigger) {
     event.preventDefault();
     if (viewTrigger.dataset.preferredGame) preferredOnlineGameType = viewTrigger.dataset.preferredGame;
+    if (activeView === "game" && viewTrigger.dataset.view !== "game") {
+      void leaveCurrentGame(viewTrigger.dataset.view);
+      return;
+    }
     showView(viewTrigger.dataset.view);
   }
 });
@@ -1189,7 +1217,12 @@ els.nameInput.addEventListener("keydown", (event) => { if (event.key === "Enter"
 document.querySelector("#acceptInvite").addEventListener("click", () => respondInvite(true));
 document.querySelector("#declineInvite").addEventListener("click", () => respondInvite(false));
 els.invitePasswordInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); respondInvite(true); } });
-document.querySelector("#leaveGame").addEventListener("click", leaveCurrentGame);
+document.querySelector("#leaveGame").addEventListener("click", () => leaveCurrentGame());
+window.addEventListener("neighbor-room-left", (event) => {
+  lastActiveRoomSignal = "";
+  window.NEIGHBOR_PENDING_ROOM = null;
+  showView(event.detail?.destination || "home");
+});
 els.refreshLobby.addEventListener("click", fetchLobby);
 els.board.addEventListener("click", handleBoardClick);
 els.chatForm.addEventListener("submit", sendChatMessage);

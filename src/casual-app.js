@@ -77,6 +77,8 @@ const waitingRoomAiChoice = document.querySelector("#waitingRoomAiChoice");
 const waitForHumanPlayers = document.querySelector("#waitForHumanPlayers");
 const fillRoomWithAi = document.querySelector("#fillRoomWithAi");
 const enterRoomGame = document.querySelector("#enterRoomGame");
+const leaveWaitingRoom = document.querySelector("#leaveWaitingRoom");
+const leaveWaitingRoomTop = document.querySelector("#leaveWaitingRoomTop");
 const gameRulesDialog = document.querySelector("#gameRulesDialog");
 const gameRulesTitle = document.querySelector("#gameRulesTitle");
 const gameRulesSummary = document.querySelector("#gameRulesSummary");
@@ -94,6 +96,7 @@ const rulesEl = document.querySelector("#casualRuleNote");
 const playersEl = document.querySelector("#casualPlayers");
 const primary = document.querySelector("#casualPrimaryAction");
 const pass = document.querySelector("#casualPass");
+const leaveCasualButton = document.querySelector("#leaveCasualGame");
 const difficultyFieldset = document.querySelector("#casualDifficultyFieldset");
 const speedFieldset = document.querySelector("#casualSpeedFieldset");
 const arcadeModeFieldset = document.querySelector("#casualArcadeModeFieldset");
@@ -108,6 +111,7 @@ let tableAiQueuedKey = null;
 let roomWaitingTimer = null;
 let launchingRoomId = null;
 let pendingJoinRoom = null;
+let isLeavingCasualRoom = false;
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
 const arcadeActionPulse = [0, 0];
@@ -128,7 +132,7 @@ window.addEventListener("neighbor-online-players", (event) => {
 function showOnly(id) {
   document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === id));
   document.querySelectorAll(".nav-item").forEach((item) => item.classList.toggle("active", item.dataset.view === (id === "homeView" ? "home" : id === "lobbyView" ? "lobby" : "")));
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, left: 0, behavior: "auto" });
 }
 function toast(message) { const el = document.querySelector("#toast"); el.textContent = message; el.classList.add("show"); setTimeout(() => el.classList.remove("show"), 2200); }
 function schedule(fn, delay = 500) { clearTimeout(aiTimer); aiTimer = setTimeout(fn, delay); }
@@ -310,7 +314,17 @@ roomCount.addEventListener("change", () => { roomWagerField.hidden = Number(room
 window.setInterval(() => { if (document.querySelector("#lobbyView").classList.contains("active")) renderRooms(); }, 3000);
 
 roomWaitingDialog.addEventListener("close", stopRoomWaiting);
-roomWaitingDialog.addEventListener("cancel", stopRoomWaiting);
+roomWaitingDialog.addEventListener("cancel", (event) => { event.preventDefault(); void leaveCasualGame("lobby"); });
+leaveWaitingRoom.addEventListener("click", () => leaveCasualGame("lobby"));
+leaveWaitingRoomTop.addEventListener("click", () => leaveCasualGame("lobby"));
+leaveCasualButton.addEventListener("click", () => leaveCasualGame(state?.room ? "lobby" : "home"));
+document.addEventListener("click", (event) => {
+  const viewTrigger = event.target.closest("[data-view]");
+  if (!viewTrigger || !document.querySelector("#casualView").classList.contains("active")) return;
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  void leaveCasualGame(viewTrigger.dataset.view || "home");
+}, true);
 async function chooseRoomAiFill(aiFill) {
   if (!pendingRoom || pendingRoom.maxPlayers < 3 || pendingRoom.players.length < 2) return;
   try {
@@ -432,6 +446,56 @@ function setPlayers(items, active) {
 }
 function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisCountdownTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); clearInterval(rewardMonitorTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisCountdownTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; rewardMonitorTimer = null; arcadeFrame = null; }
 
+function resetCasualSession() {
+  clearTimeout(aiTimer);
+  aiTimer = null;
+  stopRoomWaiting();
+  stopGameLoops();
+  selected.clear();
+  tableAiQueuedKey = null;
+  tablePendingCommit = null;
+  tetrisSyncInFlight = false;
+  arcadeSyncInFlight = false;
+  tableSyncInFlight = false;
+  for (const key of Object.keys(arcadeKeys)) delete arcadeKeys[key];
+  for (const key of Object.keys(arcadeTouch)) delete arcadeTouch[key];
+  arcadeActionPulse.fill(0);
+  state = null;
+  pendingRoom = null;
+  launchingRoomId = null;
+  enteringOnlineGameId = null;
+  window.NEIGHBOR_CASUAL_ACTIVE_ROOM_ID = null;
+  window.NEIGHBOR_PENDING_ROOM = null;
+  if (roomWaitingDialog.open) roomWaitingDialog.close();
+}
+
+async function leaveCasualGame(destination = "home") {
+  if (isLeavingCasualRoom) return;
+  isLeavingCasualRoom = true;
+  const room = state?.room || pendingRoom;
+  const roomId = room?.id;
+  leaveCasualButton.disabled = true;
+  leaveCasualButton.textContent = "正在離開…";
+  stopRoomWaiting();
+  stopGameLoops();
+  try {
+    if (ROOM_API && roomId && !roomId.startsWith("local-")) {
+      await roomRequest(`/api/rooms/${encodeURIComponent(roomId)}/leave`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId }) });
+    } else if (roomId?.startsWith("local-")) {
+      saveRooms(storedRooms().filter((item) => item.id !== roomId));
+    }
+  } catch (error) {
+    // A peer may have already closed the shared room; local cleanup must still finish.
+    if (!/房間已關閉|你不在/.test(error.message)) toast(error.message);
+  } finally {
+    resetCasualSession();
+    leaveCasualButton.disabled = false;
+    leaveCasualButton.textContent = "← 返回遊戲首頁";
+    isLeavingCasualRoom = false;
+    window.dispatchEvent(new CustomEvent("neighbor-room-left", { detail: { destination } }));
+  }
+}
+
 function soloResult() {
   if (!state || state.room) return null;
   if (state.game === "reversi" && state.finished) { const winner = reversiWinner(state.board); return winner === DARK ? "win" : winner === LIGHT ? "loss" : "draw"; }
@@ -451,7 +515,7 @@ function startGame(game, players, difficulty, speed = "normal", room = null, arc
   launchingRoomId = room?.id || null;
   const localSeat = room ? Math.max(0, room.players.findIndex((player) => player.id === roomPlayerId)) : 0;
   state = { game, players, difficulty, speed, room, arcadeMode, localSeat, humanSeats: room?.players?.length || 1, roomRevision: 0, roomReady: !room };
-  showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
+  showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; leaveCasualButton.textContent = room ? "← 離開房間" : "← 返回遊戲首頁"; pass.hidden = true; primary.hidden = true;
   ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(room ? room.players.length : players, room ? room.maxPlayers : 4), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room), brickbreaker: () => startArcadeGame("brickbreaker", players, room, arcadeMode) })[game]?.();
   if (!room) {
     startRewardGame(game);
