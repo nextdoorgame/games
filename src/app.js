@@ -48,7 +48,10 @@ const els = {
   onlineFirstMoveFieldset: document.querySelector("#onlineFirstMoveFieldset"),
   onlineTurnTimeFieldset: document.querySelector("#onlineTurnTimeFieldset"),
   onlineInviteHint: document.querySelector("#onlineInviteHint"),
+  onlineInviteRoomPassword: document.querySelector("#onlineInviteRoomPassword"),
   inviteGameName: document.querySelector("#inviteGameName"),
+  invitePasswordField: document.querySelector("#invitePasswordField"),
+  invitePasswordInput: document.querySelector("#invitePasswordInput"),
   singleDialogTitle: document.querySelector("#singleDialogTitle"),
   singleDialogDescription: document.querySelector("#singleDialogDescription"),
   singleColorLegend: document.querySelector("#singleColorLegend"),
@@ -687,6 +690,8 @@ async function fetchLobby() {
         const firstRoundLabel = inviteIsXiangqi ? (inviterIsBlack ? "對方執紅先手・你執黑後手" : "你執紅先手・對方執黑後手") : (inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手");
         els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘`;
       } else els.inviterSeriesLabel.textContent = `${currentInvite.maxPlayers || 2} 人房・接受後進入房間等待房主開局`;
+      els.invitePasswordField.hidden = !currentInvite.hasPassword;
+      els.invitePasswordInput.value = "";
       els.inviteDialog.showModal();
     } else if (data.activeRoom) {
       const signal = `${data.activeRoom.id}:${data.activeRoom.status}:${data.activeRoom.launchAt || 0}`;
@@ -732,6 +737,7 @@ function prepareOnlineInvite(player, button) {
   pendingInvitePlayer = player;
   pendingInviteButton = button;
   els.onlineOpponentName.textContent = player.name;
+  els.onlineInviteRoomPassword.value = "";
   configureInviteGame(window.NEIGHBOR_SELECTED_ROOM_GAME || preferredOnlineGameType);
   els.onlineSeriesDialog.showModal();
 }
@@ -752,11 +758,11 @@ function configureInviteGame(gameType) {
   els.onlineInviteHint.textContent = isDuel ? "時間用完仍未落子時，伺服器會隨機替該玩家下一步。" : "接受邀請後會進入同一個房間；房主開局時，全房會一起倒數 5 秒。";
 }
 
-async function sendInvite(player, button, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes) {
+async function sendInvite(player, button, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
@@ -777,7 +783,7 @@ async function respondInvite(accept) {
   acceptButton.disabled = true;
   declineButton.disabled = true;
   try {
-    const data = await api("/api/invite/respond", { method: "POST", body: JSON.stringify({ inviteId: invite.id, playerId, accept }) });
+    const data = await api("/api/invite/respond", { method: "POST", body: JSON.stringify({ inviteId: invite.id, playerId, accept, password: accept ? els.invitePasswordInput.value : "" }) });
     currentInvite = null;
     els.inviteDialog.close();
     if (accept && data.gameId) await startOnlineGame(data.gameId);
@@ -789,6 +795,7 @@ async function respondInvite(accept) {
     else showToast("已婉拒這次邀請");
   } catch (error) {
     showToast(error.message);
+    if (accept && invite.hasPassword) { els.invitePasswordInput.focus(); els.invitePasswordInput.select(); }
   } finally {
     isRespondingInvite = false;
     acceptButton.disabled = false;
@@ -1084,7 +1091,8 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
-  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes);
+  const password = String(data.get("password") || "").trim().slice(0, 32);
+  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password);
 });
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {
@@ -1099,6 +1107,7 @@ document.querySelector("#saveName").addEventListener("click", () => {
 els.nameInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); document.querySelector("#saveName").click(); } });
 document.querySelector("#acceptInvite").addEventListener("click", () => respondInvite(true));
 document.querySelector("#declineInvite").addEventListener("click", () => respondInvite(false));
+els.invitePasswordInput.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); respondInvite(true); } });
 document.querySelector("#leaveGame").addEventListener("click", leaveCurrentGame);
 els.refreshLobby.addEventListener("click", fetchLobby);
 els.board.addEventListener("click", handleBoardClick);

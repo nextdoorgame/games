@@ -99,6 +99,7 @@ export function createBrickBreakerState(mode = "classic") {
     combo: 0,
     maxCombo: 0,
     frame: 0,
+    countdown: 300,
     winner: null,
     message: "準備發球",
     event: null,
@@ -230,6 +231,10 @@ function worldCleared(world) {
 export function updateBrickBreaker(game, firstInput = {}, secondInput = {}, useAi = false) {
   if (game.winner !== null) return game;
   game.frame += 1;
+  if (game.countdown > 0) {
+    game.countdown -= 1;
+    return game;
+  }
   const second = useAi ? brickBreakerAi(game) : secondInput;
   if (game.mode === "versus") {
     updatePaddle(game, game.worlds[0], 0, firstInput);

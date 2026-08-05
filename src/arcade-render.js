@@ -87,6 +87,12 @@ export function drawRacing(canvas, game) {
   pixelText(ctx, `P1  ${game.players[0].score}`, 26, 35, 19, "left", "#74adff"); pixelText(ctx, `❤ ${game.players[0].lives}`, 26, 59, 15, "left", "#fff");
   pixelText(ctx, `P2  ${game.players[1].score}`, 774, 35, 19, "right", "#ff8275"); pixelText(ctx, `❤ ${game.players[1].lives}`, 774, 59, 15, "right", "#fff");
   pixelText(ctx, `${Math.floor(game.distance)} m`, 400, 34, 24, "center", "#ffe267");
+  if (game.countdown > 0) {
+    const count = Math.max(1, Math.ceil(game.countdown / 60));
+    ctx.fillStyle = "rgba(18,24,26,.66)"; ctx.fillRect(285, 165, 230, 145);
+    pixelText(ctx, String(count), 400, 217, 70, "center", "#ffe267");
+    pixelText(ctx, "準備出發", 400, 281, 19, "center", "#fff");
+  }
   if (game.winner !== null) { ctx.fillStyle = "rgba(18,24,26,.78)"; ctx.fillRect(195, 185, 410, 120); pixelText(ctx, game.winner === -1 ? "平手！" : `玩家 ${game.winner + 1} 獲勝`, 400, 229, 34, "center", "#ffe267"); pixelText(ctx, "避開障礙，再跑一局", 400, 271, 15, "center", "#fff"); }
 }
 
@@ -156,6 +162,12 @@ export function drawBrickBreaker(canvas, game) {
   if (game.mode === "classic") drawBrickPaddle(ctx, game.players[0], "P1");
   else { drawBrickPaddle(ctx, game.players[0], "P1"); drawBrickPaddle(ctx, game.players[1], "P2"); }
   if (game.mode === "versus") { ctx.fillStyle = "rgba(248,238,210,.72)"; ctx.fillRect(398, 66, 4, 434); }
+  if (game.countdown > 0) {
+    const count = Math.max(1, Math.ceil(game.countdown / 60));
+    ctx.fillStyle = "rgba(5,10,20,.76)"; ctx.fillRect(285, 165, 230, 145);
+    pixelText(ctx, String(count), 400, 217, 70, "center", "#ffe267");
+    pixelText(ctx, "準備開球", 400, 281, 19, "center", "#fff");
+  }
   if (game.event && game.frame - game.event.frame < 150) pixelText(ctx, game.message, 400, 300, 24, "center", "#fff3a5");
   if (game.winner !== null) {
     ctx.fillStyle = "rgba(5,10,20,.82)"; ctx.fillRect(185, 188, 430, 120);

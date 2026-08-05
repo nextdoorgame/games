@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { extname, join, normalize } from "node:path";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
 
 const defaultRoot = process.cwd();
@@ -17,6 +17,7 @@ const INVITE_TTL = 5 * 60_000;
 const TURN_TIME_OPTIONS = new Set([1, 3, 5, 10]);
 const MAX_CHAT_LENGTH = 200;
 const MAX_CHAT_MESSAGES = 100;
+const MAX_ROOM_PASSWORD_LENGTH = 32;
 
 const players = new Map();
 const invites = new Map();
@@ -104,19 +105,41 @@ function publicRoom(room) {
     gameId: room.gameId || null,
     launchAt: room.launchAt || null,
     launchConfig: room.launchConfig || null,
+    hasPassword: Boolean(room.passwordHash),
     createdAt: room.createdAt,
     updatedAt: room.updatedAt
   };
 }
 
-function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null }) {
+function normalizeRoomPassword(value) {
+  return String(value || "").trim().slice(0, MAX_ROOM_PASSWORD_LENGTH);
+}
+
+function createPasswordRecord(value) {
+  const password = normalizeRoomPassword(value);
+  if (!password) return { passwordSalt: null, passwordHash: null };
+  const passwordSalt = randomBytes(16).toString("hex");
+  return { passwordSalt, passwordHash: scryptSync(password, passwordSalt, 32).toString("hex") };
+}
+
+function verifyRoomPassword(room, value) {
+  if (!room.passwordHash || !room.passwordSalt) return true;
+  const password = normalizeRoomPassword(value);
+  if (!password) return false;
+  const expected = Buffer.from(room.passwordHash, "hex");
+  const actual = scryptSync(password, room.passwordSalt, 32);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
+}
+
+function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null, password = "" }) {
+  const passwordRecord = createPasswordRecord(password);
   return {
     id: randomUUID(), gameType, name, maxPlayers, aiFill: false,
     status: maxPlayers === 1 ? "full" : "waiting", players: [host],
     snapshots: gameType === "tetris" ? new Map() : null,
     arcadeInputs: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null,
     arcadeSnapshot: null, tableState: null, tableRevision: 0,
-    matchConfig, launchAt: null, launchConfig: null, gameId: null,
+    matchConfig, ...passwordRecord, launchAt: null, launchConfig: null, gameId: null,
     createdAt: Date.now(), updatedAt: Date.now()
   };
 }
@@ -383,7 +406,8 @@ async function handleApi(req, res, url) {
       gameType,
       name: String(body.name || `${hostName}的房間`).trim().slice(0, 16),
       maxPlayers,
-      host: { id: hostId, deviceId: hostDeviceId, name: hostName }
+      host: { id: hostId, deviceId: hostDeviceId, name: hostName },
+      password: body.password
     });
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
@@ -413,6 +437,7 @@ async function handleApi(req, res, url) {
       existingPlayer.deviceId = deviceId;
       existingPlayer.name = playerName;
     } else {
+      if (!verifyRoomPassword(room, body.password)) return sendJson(res, 401, { error: "房間密碼不正確" });
       if (["starting", "playing"].includes(room.status)) return sendJson(res, 409, { error: "這個房間已經開始遊戲" });
       if (room.aiFill) return sendJson(res, 409, { error: "剩餘座位已由 AI 補滿" });
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
@@ -550,6 +575,7 @@ async function handleApi(req, res, url) {
     const requestedPlayers = Number(body.maxPlayers);
     const maxPlayers = allowedPlayers.includes(requestedPlayers) ? requestedPlayers : allowedPlayers.at(-1);
     const turnTimeMinutes = TURN_TIME_OPTIONS.has(Number(body.turnTimeMinutes)) ? Number(body.turnTimeMinutes) : 3;
+    const roomPassword = normalizeRoomPassword(body.password);
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
@@ -557,18 +583,19 @@ async function handleApi(req, res, url) {
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
     const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.gameType === gameType && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    let room = [...rooms.values()].filter((candidate) => candidate.gameType === gameType && candidate.maxPlayers === maxPlayers && candidate.players[0]?.id === from.id && candidate.players.length < candidate.maxPlayers && !candidate.aiFill && ["waiting", "ready"].includes(candidate.status)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    let room = [...rooms.values()].filter((candidate) => candidate.gameType === gameType && candidate.maxPlayers === maxPlayers && candidate.players[0]?.id === from.id && candidate.players.length < candidate.maxPlayers && !candidate.aiFill && ["waiting", "ready"].includes(candidate.status) && Boolean(candidate.passwordHash) === Boolean(roomPassword) && verifyRoomPassword(candidate, roomPassword)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     if (!room || maxPlayers === 2 && [...invites.values()].some((pending) => pending.roomId === room.id && pending.status === "pending")) {
       room = createRoomRecord({
         gameType,
         name: `${from.name}的${gameType === "gomoku" ? "五子棋" : gameType === "xiangqi" ? "象棋" : "邀請局"}`.slice(0, 16),
         maxPlayers,
         host: { id: from.id, deviceId: from.deviceId || "", name: from.name },
-        matchConfig: DUEL_ROOM_TYPES.has(gameType) ? { bestOf, inviterColor: inviterColor === WHITE ? "white" : "black", turnTimeMinutes } : null
+        matchConfig: DUEL_ROOM_TYPES.has(gameType) ? { bestOf, inviterColor: inviterColor === WHITE ? "white" : "black", turnTimeMinutes } : null,
+        password: roomPassword
       });
       rooms.set(room.id, room);
     }
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, roomId: room.id, status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, roomId: room.id, hasPassword: Boolean(room.passwordHash), status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
@@ -597,6 +624,7 @@ async function handleApi(req, res, url) {
     const room = rooms.get(invite.roomId);
     if (!room) return sendJson(res, 404, { error: "邀請房間已失效，請重新邀請" });
     if (!room.players.some((player) => player.id === to.id)) {
+      if (!verifyRoomPassword(room, body.password)) return sendJson(res, 401, { error: "房間密碼不正確" });
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "邀請房間已滿" });
       room.players.push({ id: to.id, deviceId: to.deviceId || "", name: to.name });
     }

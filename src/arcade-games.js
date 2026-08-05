@@ -161,7 +161,7 @@ export function createRacingState() {
   return {
     type: "racing",
     players: [{ x: 315, y: 405, color: "#2e72d2", lives: 3, score: 0 }, { x: 485, y: 405, color: "#d94b3c", lives: 3, score: 0 }],
-    obstacles: [], distance: 0, speed: 5.2, laneOffset: 0, spawn: 18, frame: 0, winner: null
+    obstacles: [], distance: 0, speed: 5.2, laneOffset: 0, spawn: 18, frame: 0, countdown: 300, winner: null
   };
 }
 
@@ -197,6 +197,10 @@ function updateRacePlayer(game, player, input, playerIndex) {
 export function updateRacing(game, firstInput, secondInput, useAi = false) {
   if (game.winner !== null) return game;
   game.frame += 1;
+  if (game.countdown > 0) {
+    game.countdown -= 1;
+    return game;
+  }
   game.speed = clamp(5.2 + game.distance / 900, 5.2, 10);
   game.distance += game.speed * .055; game.laneOffset = (game.laneOffset + game.speed) % 72;
   game.spawn -= 1;
