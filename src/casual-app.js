@@ -157,10 +157,19 @@ function setRoomGame(game) {
   renderRooms();
 }
 async function roomRequest(path, options = {}) {
-  const response = await fetch(`${ROOM_API}${path}`, { ...options, headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) } });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "房間服務暫時無法使用");
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`${ROOM_API}${path}`, { ...options, signal: controller.signal, headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) } });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "房間服務暫時無法使用");
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("連線逾時，正在自動重試");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function stopRoomWaiting() {
@@ -771,22 +780,30 @@ function controlTetris(action) {
 async function syncTetrisRoom() {
   if (state?.game !== "tetris" || !state.room || !ROOM_API || tetrisSyncInFlight) return;
   tetrisSyncInFlight = true;
+  const roomId = state.room.id;
   try {
-    const data = await roomRequest(`/api/rooms/${state.room.id}/tetris`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, state: tetrisSnapshot(state.engine) }) });
+    const data = await roomRequest(`/api/rooms/${roomId}/tetris`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, state: tetrisSnapshot(state.engine) }) });
     if (state?.game !== "tetris" || state.room?.id !== data.room.id) return;
     state.room = data.room;
     state.opponent = data.snapshots.find((item) => item.playerId !== roomPlayerId)?.state || null;
+    const recovered = state.syncWarningShown;
+    state.syncFailures = 0;
+    state.syncWarningShown = false;
     renderTetris();
+    if (recovered) toast("已恢復與對手的即時同步");
   } catch (error) {
-    if (!state.syncWarningShown) { state.syncWarningShown = true; toast(`對手同步暫停：${error.message}`); }
+    if (state?.game !== "tetris" || state.room?.id !== roomId) return;
+    state.syncFailures = (state.syncFailures || 0) + 1;
+    if (state.syncFailures >= 3 && !state.syncWarningShown) { state.syncWarningShown = true; toast(`連線不穩，仍在自動重試：${error.message}`); }
   } finally {
     tetrisSyncInFlight = false;
-    if (state?.game === "tetris" && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) tetrisSyncTimer = setTimeout(syncTetrisRoom, 60);
+    const retryDelay = state?.syncFailures ? Math.min(1_500, 150 * (2 ** Math.min(3, state.syncFailures - 1))) : 100;
+    if (state?.game === "tetris" && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) tetrisSyncTimer = setTimeout(syncTetrisRoom, retryDelay);
   }
 }
 
 function startTetris(speed, room) {
-  state = { ...state, speed, room, engine: createTetrisState(speed), opponent: null, startCountdownAt: room ? 0 : Date.now() + 5000, syncWarningShown: false };
+  state = { ...state, speed, room, engine: createTetrisState(speed), opponent: null, startCountdownAt: room ? 0 : Date.now() + 5000, syncWarningShown: false, syncFailures: 0 };
   rulesEl.textContent = "方向鍵左右移動、↑ 旋轉、↓ 軟降、空白鍵硬降；完整一行會自動消除。雙人模式各自在自己的裝置操作，畫面會同步顯示對手進度。";
   primary.hidden = false; primary.textContent = "暫停遊戲";
   renderTetris();
@@ -865,10 +882,11 @@ function arcadeLoop() {
 async function syncArcadeRoom() {
   if (!isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSyncInFlight) return;
   arcadeSyncInFlight = true;
+  const roomId = state.room.id, gameType = state.game;
   try {
     const payload = { playerId: roomPlayerId, input: arcadeInput(0) };
     if (state.onlineRole === "host") payload.state = state.engine;
-    const data = await roomRequest(`/api/rooms/${state.room.id}/arcade`, { method: "POST", body: JSON.stringify(payload) });
+    const data = await roomRequest(`/api/rooms/${roomId}/arcade`, { method: "POST", body: JSON.stringify(payload) });
     if (!isArcadeGame(state?.game) || state.room?.id !== data.room.id) return;
     state.room = data.room;
     const remote = data.inputs.find((item) => item.playerId !== roomPlayerId);
@@ -877,19 +895,26 @@ async function syncArcadeRoom() {
       state.engine = state.hasAuthoritativeSnapshot ? reconcileArcadeGuest(state.engine, data.snapshot, state.game) : structuredClone(data.snapshot);
       state.hasAuthoritativeSnapshot = true;
     }
-    state.syncWarningShown = false; renderArcadeStatus();
+    const recovered = state.syncWarningShown;
+    state.syncFailures = 0;
+    state.syncWarningShown = false;
+    renderArcadeStatus();
+    if (recovered) toast("已恢復與對手的即時同步");
   } catch (error) {
-    if (!state.syncWarningShown) { state.syncWarningShown = true; toast(`對戰同步暫停：${error.message}`); }
+    if (state?.game !== gameType || state.room?.id !== roomId) return;
+    state.syncFailures = (state.syncFailures || 0) + 1;
+    if (state.syncFailures >= 3 && !state.syncWarningShown) { state.syncWarningShown = true; toast(`連線不穩，仍在自動重試：${error.message}`); }
   } finally {
     arcadeSyncInFlight = false;
-    if (isArcadeGame(state?.game) && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, 16);
+    const retryDelay = state?.syncFailures ? Math.min(1_500, 150 * (2 ** Math.min(3, state.syncFailures - 1))) : 50;
+    if (isArcadeGame(state?.game) && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, retryDelay);
   }
 }
 
 function startArcadeGame(game, players, room, arcadeMode = "classic") {
   const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : createBrickBreakerState(arcadeMode);
   if (room && ["racing", "brickbreaker"].includes(game)) engine.countdown = 0;
-  state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, hasAuthoritativeSnapshot: false, syncWarningShown: false };
+  state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, hasAuthoritativeSnapshot: false, syncWarningShown: false, syncFailures: 0 };
   const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">發球／衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
   boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {

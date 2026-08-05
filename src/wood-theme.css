@@ -256,6 +256,35 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 
 @media (prefers-reduced-motion: reduce) { button, .expanded-games .game-card { transition: none; } }
 
+/* Desktop game tables stay above the persistent navigation without shrinking text. */
+@media (min-width: 681px) {
+  #gameView, #casualView { padding-top: 28px; padding-bottom: 38px; }
+  #gameView .game-heading, #casualView .game-heading { margin-bottom: 14px; }
+  #gameView .game-layout { grid-template-columns: auto 260px; gap: 18px; }
+  #gameView .board { --cell: min(24px, calc((100dvh - 224px) / 19)); }
+  #gameView .board.xiangqi-board { --xq-cell: min(50px, calc((100dvh - 222px) / 10)); }
+  #gameView .board-card { padding: 14px; }
+
+  #casualView { width: min(1140px, 100%); }
+  #casualView .casual-layout { grid-template-columns: minmax(0, 800px) 260px; gap: 16px; }
+  #casualView .casual-board-area { min-height: 0; padding: 14px; }
+  #casualView .casual-panel { padding: 14px; gap: 12px; }
+  #casualView .arcade-stage { width: min(720px, 100%, calc(160dvh - 393.6px)); }
+  #casualView .checker-board { width: min(470px, calc(100dvh - 290px)); height: min(470px, calc(100dvh - 290px)); }
+  #casualView .reversi-board { grid-template-columns: repeat(8, 48px); grid-template-rows: repeat(8, 48px); }
+  #casualView .banqi-board { grid-template-columns: repeat(8, 54px); grid-template-rows: repeat(4, 54px); }
+  #casualView .chess-board { grid-template-columns: repeat(8, 52px); grid-template-rows: repeat(8, 52px); }
+  #casualView .go-board { grid-template-columns: repeat(13, 32px); grid-template-rows: repeat(13, 32px); background-size: 32px 32px; background-position: 30px 30px; }
+  #casualView .bigtwo-table, #casualView .card-table { min-height: 470px; }
+  #casualView .tetris-arena.single { grid-template-columns: minmax(190px, min(285px, calc((100dvh - 370px) / 2))); }
+  #casualView .tetris-arena.versus { grid-template-columns: repeat(2, minmax(180px, min(240px, calc((100dvh - 370px) / 2)))); gap: 16px; }
+}
+
+@media (min-width: 681px) and (max-width: 1100px) {
+  #casualView .casual-layout { grid-template-columns: minmax(0, 1fr); }
+  #casualView .casual-panel { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* 織音幣、帳號與新版淺橡木房間大廳 */
 .topbar-actions { display: flex; align-items: center; gap: 14px; }
 .wallet-pill { min-height: 44px; padding: 5px 14px 5px 6px; display: flex; align-items: center; gap: 9px; color: var(--ink); background: #fff; border: 1px solid #d8cdbd; border-radius: 999px; box-shadow: 0 6px 18px rgba(82,62,38,.07); }

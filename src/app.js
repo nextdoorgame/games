@@ -720,13 +720,23 @@ function restartSingle() {
 
 async function api(path, options = {}) {
   if (!ONLINE_AVAILABLE) throw new Error("線上服務尚未設定，單人模式仍可正常遊玩");
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
-    headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) }
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "連線發生問題");
-  return data;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) }
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || "連線發生問題");
+    return data;
+  } catch (error) {
+    if (error?.name === "AbortError") throw new Error("連線逾時，正在自動重試");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function fetchLobby() {

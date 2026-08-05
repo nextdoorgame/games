@@ -13,7 +13,7 @@ const WHITE = 2;
 // Background tabs and mobile browsers throttle timers aggressively. Keep players
 // visible long enough for an invitation to be accepted even when the lobby tab
 // is not currently focused.
-const PLAYER_TTL = 60_000;
+const PLAYER_TTL = 180_000;
 const INVITE_TTL = 5 * 60_000;
 const TURN_TIME_OPTIONS = new Set([1, 3, 5, 10]);
 const MAX_CHAT_LENGTH = 200;
