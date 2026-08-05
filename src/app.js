@@ -10,6 +10,14 @@ const EMPTY = 0;
 const configuredApiBase = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
 const API_BASE = configuredApiBase;
 const ONLINE_AVAILABLE = Boolean(API_BASE);
+const ONLINE_GAME_META = {
+  gomoku: { name: "五子棋", players: [2] }, xiangqi: { name: "中國象棋", players: [2] }, reversi: { name: "黑白棋", players: [2] },
+  checkers: { name: "中國跳棋", players: [2, 3] }, mahjong: { name: "麻將", players: [2, 3, 4] }, bigtwo: { name: "大老二", players: [3, 4, 5] },
+  banqi: { name: "暗棋", players: [2] }, chess: { name: "西洋棋", players: [2] }, go: { name: "圍棋", players: [2] },
+  blackjack: { name: "二十一點", players: [3, 4, 5] }, pickred: { name: "撿紅點", players: [3, 4, 5] }, ninetynine: { name: "九九", players: [3, 4, 5] },
+  tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }
+};
+const DUEL_INVITE_GAMES = new Set(["gomoku", "xiangqi"]);
 
 const els = {
   views: [...document.querySelectorAll(".view")],
@@ -33,6 +41,13 @@ const els = {
   inviterName: document.querySelector("#inviterName"),
   inviterSeriesLabel: document.querySelector("#inviterSeriesLabel"),
   onlineOpponentName: document.querySelector("#onlineOpponentName"),
+  onlineInviteGameSelect: document.querySelector("#onlineInviteGameSelect"),
+  onlineInvitePlayerCount: document.querySelector("#onlineInvitePlayerCount"),
+  onlineInvitePlayerFieldset: document.querySelector("#onlineInvitePlayerFieldset"),
+  onlineSeriesFieldset: document.querySelector("#onlineSeriesFieldset"),
+  onlineFirstMoveFieldset: document.querySelector("#onlineFirstMoveFieldset"),
+  onlineTurnTimeFieldset: document.querySelector("#onlineTurnTimeFieldset"),
+  onlineInviteHint: document.querySelector("#onlineInviteHint"),
   inviteGameName: document.querySelector("#inviteGameName"),
   singleDialogTitle: document.querySelector("#singleDialogTitle"),
   singleDialogDescription: document.querySelector("#singleDialogDescription"),
@@ -106,6 +121,7 @@ let renderedChatKey = "";
 let lastAutomaticMoveKey = "";
 let pendingSingleGameType = "gomoku";
 let preferredOnlineGameType = "gomoku";
+let lastActiveRoomSignal = "";
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -663,12 +679,22 @@ async function fetchLobby() {
     } else if (data.incomingInvites.length && !currentInvite && !els.inviteDialog.open) {
       currentInvite = data.incomingInvites[0];
       els.inviterName.textContent = currentInvite.fromName;
+      const meta = ONLINE_GAME_META[currentInvite.gameType] || ONLINE_GAME_META.gomoku;
       const inviteIsXiangqi = currentInvite.gameType === "xiangqi";
-      els.inviteGameName.textContent = inviteIsXiangqi ? "中國象棋" : "五子棋";
-      const inviterIsBlack = currentInvite.inviterColor !== WHITE;
-      const firstRoundLabel = inviteIsXiangqi ? (inviterIsBlack ? "對方執紅先手・你執黑後手" : "你執紅先手・對方執黑後手") : (inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手");
-      els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘・每局交換先後手`;
+      els.inviteGameName.textContent = meta.name;
+      if (DUEL_INVITE_GAMES.has(currentInvite.gameType)) {
+        const inviterIsBlack = currentInvite.inviterColor !== WHITE;
+        const firstRoundLabel = inviteIsXiangqi ? (inviterIsBlack ? "對方執紅先手・你執黑後手" : "你執紅先手・對方執黑後手") : (inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手");
+        els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘`;
+      } else els.inviterSeriesLabel.textContent = `${currentInvite.maxPlayers || 2} 人房・接受後進入房間等待房主開局`;
       els.inviteDialog.showModal();
+    } else if (data.activeRoom) {
+      const signal = `${data.activeRoom.id}:${data.activeRoom.status}:${data.activeRoom.launchAt || 0}`;
+      if (signal !== lastActiveRoomSignal) {
+        lastActiveRoomSignal = signal;
+        window.NEIGHBOR_PENDING_ROOM = data.activeRoom;
+        window.dispatchEvent(new CustomEvent("neighbor-room-invite-accepted", { detail: data.activeRoom }));
+      }
     }
   } catch (error) {
     if (activeView === "lobby") showToast(error.message);
@@ -706,20 +732,35 @@ function prepareOnlineInvite(player, button) {
   pendingInvitePlayer = player;
   pendingInviteButton = button;
   els.onlineOpponentName.textContent = player.name;
-  const preferred = els.onlineSeriesDialog.querySelector(`input[name="gameType"][value="${preferredOnlineGameType}"]`);
-  if (preferred) preferred.checked = true;
+  configureInviteGame(window.NEIGHBOR_SELECTED_ROOM_GAME || preferredOnlineGameType);
   els.onlineSeriesDialog.showModal();
 }
 
-async function sendInvite(player, button, gameType, bestOf, inviterColor, turnTimeMinutes) {
+function configureInviteGame(gameType) {
+  const normalized = ONLINE_GAME_META[gameType] ? gameType : "gomoku";
+  const meta = ONLINE_GAME_META[normalized];
+  preferredOnlineGameType = normalized;
+  els.onlineInviteGameSelect.value = normalized;
+  els.onlineInvitePlayerCount.replaceChildren(...meta.players.map((count) => {
+    const option = document.createElement("option"); option.value = count; option.textContent = `${count} 人`; return option;
+  }));
+  const isDuel = DUEL_INVITE_GAMES.has(normalized);
+  els.onlineInvitePlayerFieldset.hidden = meta.players.length === 1;
+  els.onlineSeriesFieldset.hidden = !isDuel;
+  els.onlineFirstMoveFieldset.hidden = !isDuel;
+  els.onlineTurnTimeFieldset.hidden = !isDuel;
+  els.onlineInviteHint.textContent = isDuel ? "時間用完仍未落子時，伺服器會隨機替該玩家下一步。" : "接受邀請後會進入同一個房間；房主開局時，全房會一起倒數 5 秒。";
+}
+
+async function sendInvite(player, button, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, bestOf, inviterColor, turnTimeMinutes }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
-    showToast(`已邀請 ${player.name} 進行${gameType === "xiangqi" ? "中國象棋" : "五子棋"}；每步 ${turnTimeMinutes} 分鐘`);
+    showToast(`已邀請 ${player.name} 加入${ONLINE_GAME_META[gameType]?.name || "遊戲"}`);
   } catch (error) {
     button.disabled = false;
     button.textContent = "邀請對戰";
@@ -739,7 +780,12 @@ async function respondInvite(accept) {
     const data = await api("/api/invite/respond", { method: "POST", body: JSON.stringify({ inviteId: invite.id, playerId, accept }) });
     currentInvite = null;
     els.inviteDialog.close();
-    if (accept) await startOnlineGame(data.gameId);
+    if (accept && data.gameId) await startOnlineGame(data.gameId);
+    else if (accept && data.room) {
+      lastActiveRoomSignal = `${data.room.id}:${data.room.status}:${data.room.launchAt || 0}`;
+      window.NEIGHBOR_PENDING_ROOM = data.room;
+      window.dispatchEvent(new CustomEvent("neighbor-room-invite-accepted", { detail: data.room }));
+    }
     else showToast("已婉拒這次邀請");
   } catch (error) {
     showToast(error.message);
@@ -1024,14 +1070,21 @@ document.addEventListener("click", (event) => {
 
 document.querySelectorAll(".game-solo-button").forEach((button) => button.addEventListener("click", () => openSingleSetup(button.dataset.gameType)));
 document.querySelector("#startSingle").addEventListener("click", startSingleGame);
+els.onlineInviteGameSelect.replaceChildren(...Object.entries(ONLINE_GAME_META).map(([value, meta]) => {
+  const option = document.createElement("option"); option.value = value; option.textContent = meta.name; return option;
+}));
+els.onlineInviteGameSelect.addEventListener("change", () => configureInviteGame(els.onlineInviteGameSelect.value));
+configureInviteGame("gomoku");
 document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   if (!pendingInvitePlayer || !pendingInviteButton) return;
   const data = new FormData(els.onlineSeriesDialog.querySelector("form"));
-  const gameType = data.get("gameType") === "xiangqi" ? "xiangqi" : "gomoku";
+  const gameType = ONLINE_GAME_META[data.get("gameType")] ? data.get("gameType") : "gomoku";
+  const allowedPlayers = ONLINE_GAME_META[gameType].players;
+  const maxPlayers = allowedPlayers.includes(Number(data.get("maxPlayers"))) ? Number(data.get("maxPlayers")) : allowedPlayers.at(-1);
   const bestOf = Number(data.get("bestOf")) === 5 ? 5 : 3;
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
-  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, bestOf, inviterColor, turnTimeMinutes);
+  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes);
 });
 document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
 document.querySelector("#saveName").addEventListener("click", () => {

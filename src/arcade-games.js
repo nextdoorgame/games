@@ -9,7 +9,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 export function createVolleyballState() {
   const game = {
     type: "volleyball",
-    players: [{ x: 145, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0 }, { x: 655, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0 }],
+    players: [{ x: 145, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, diveFrames: 0 }, { x: 655, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, diveFrames: 0 }],
     ball: { x: 145, y: VOLLEY_PLAYER_Y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 },
     winner: null,
     serving: 0,
@@ -25,6 +25,7 @@ function resetVolleyRound(game, serving) {
   game.serving = serving;
   game.players[0].x = 145; game.players[0].y = VOLLEY_PLAYER_Y; game.players[0].vx = 0; game.players[0].vy = 0;
   game.players[1].x = 655; game.players[1].y = VOLLEY_PLAYER_Y; game.players[1].vx = 0; game.players[1].vy = 0;
+  game.players.forEach((player) => { player.attackFrames = 0; player.diveFrames = 0; player.actionHeld = false; player.diveDirection = 0; });
   const server = game.players[serving];
   game.ball = { x: server.x, y: server.y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 };
   game.roundDelay = 0;
@@ -32,10 +33,21 @@ function resetVolleyRound(game, serving) {
   game.lastSpike = null;
 }
 
+function predictedVolleyLandingX(ball) {
+  let x = ball.x, y = ball.y, vx = ball.vx, vy = ball.vy;
+  for (let frame = 0; frame < 180 && y < 390; frame += 1) {
+    vy += .24; x += vx; y += vy;
+    if (x < 20 || x > 780) { x = clamp(x, 20, 780); vx *= -.92; }
+    if (Math.abs(x - 400) < 15 && y > 215) { x = x < 400 ? 384 : 416; vx = (x < 400 ? -1 : 1) * Math.max(2.5, Math.abs(vx)); }
+  }
+  return x;
+}
+
 function volleyAi(game) {
   if (game.frame % 18 !== 0 && game.aiInput) return game.aiInput;
   const ball = game.ball, player = game.players[1];
-  const target = ball.x > 405 ? clamp(ball.x + ball.vx * 5, 455, 745) : 635;
+  const landing = predictedVolleyLandingX(ball);
+  const target = landing > 405 ? clamp(landing, 455, 745) : 635;
   const attack = Math.abs(ball.x - player.x) < 58 && ball.y < player.y + 12;
   game.aiInput = {
     left: player.x > target + 10,
@@ -50,11 +62,24 @@ function volleyAi(game) {
 function updateVolleyPlayer(game, index, input) {
   const player = game.players[index];
   const minX = index === 0 ? 30 : 430, maxX = index === 0 ? 370 : 770;
-  player.vx = input.left ? -4.5 : input.right ? 4.5 : player.vx * .72;
+  const grounded = player.y >= VOLLEY_PLAYER_Y - 1;
+  const actionPressed = Boolean(input.action) && !player.actionHeld;
+  player.actionHeld = Boolean(input.action);
+  if (actionPressed && !grounded) player.attackFrames = 10;
+  if (actionPressed && grounded && (input.left || input.right)) {
+    player.diveFrames = 16;
+    player.diveDirection = input.left ? -1 : 1;
+    player.vy = -3.1;
+  }
+  if (player.diveFrames > 0) {
+    player.diveFrames -= 1;
+    player.vx = player.diveDirection * (2.8 + player.diveFrames * .26);
+  } else player.vx = input.left ? -4.5 : input.right ? 4.5 : player.vx * .72;
   player.x = clamp(player.x + player.vx, minX, maxX);
-  if (input.up && player.y >= 331) player.vy = -11.2;
+  if (input.up && grounded && player.diveFrames <= 0) player.vy = -11.2;
   player.vy += .57; player.y += player.vy;
   if (player.y > 332) { player.y = 332; player.vy = 0; }
+  if (player.attackFrames > 0) player.attackFrames -= 1;
 }
 
 function collideVolleyPlayer(game, index, input) {
@@ -64,7 +89,7 @@ function collideVolleyPlayer(game, index, input) {
   const distance = Math.hypot(dx, dy);
   if (distance >= 55 || distance === 0) return;
   const airborne = player.y < VOLLEY_PLAYER_Y - 5;
-  if (input.action && airborne) {
+  if (player.attackFrames > 0 && airborne) {
     const facing = index === 0 ? 1 : -1;
     const forward = index === 0 ? input.right : input.left;
     const backward = index === 0 ? input.left : input.right;
@@ -77,16 +102,19 @@ function collideVolleyPlayer(game, index, input) {
     else if (forward) shot = { vx: facing * 9.1, vy: -.7, kind: "flat", label: "前方平殺" };
     else if (backward) shot = { vx: -facing * 7.4, vy: -.9, kind: "reverse", label: "反向平殺" };
     else shot = { vx: facing * 7.3, vy: 2.9, kind: "angled", label: "斜角殺球" };
-    ball.vx = shot.vx;
-    ball.vy = shot.vy;
+    const incomingBoost = clamp(Math.abs(ball.vy) * .16, 0, 1.8);
+    ball.vx = shot.vx + Math.sign(shot.vx) * incomingBoost;
+    ball.vy = shot.vy < 0 ? shot.vy - incomingBoost * .45 : shot.vy + incomingBoost * .55;
     ball.x = px + Math.sign(shot.vx || facing) * 48;
     ball.y = player.y - 18;
     game.lastSpike = { player: index, kind: shot.kind, label: shot.label, frame: game.frame };
+    player.attackFrames = 0;
     return;
   }
-  const strength = 6.1;
-  ball.vx = dx / distance * strength + player.vx * .35;
-  ball.vy = Math.min(-4.6, dy / distance * strength - .8);
+  const impactOffset = clamp(dx / 55, -1, 1);
+  ball.vx = impactOffset * 6.8 + player.vx * .42;
+  if (Math.abs(ball.vx) < .8) ball.vx = (index === 0 ? 1 : -1) * .8;
+  ball.vy = -clamp(Math.abs(ball.vy) * .92 + 1.8, 6.6, 10.8);
   ball.x = px + dx / distance * 56;
   ball.y = py + dy / distance * 56;
 }

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f6f1" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=neighbor-6" />
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-7" />
   </head>
   <body>
     <div class="app-shell">
@@ -156,7 +156,7 @@
 
         <section id="lobbyView" class="view">
           <div class="page-heading">
-            <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p id="roomLobbyDescription">選擇在線玩家，設定賽制後送出一對一邀請。</p></div>
+            <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p id="roomLobbyDescription">選擇在線玩家，邀請對方加入這款遊戲。</p></div>
             <div class="online-badge"><i></i><strong id="onlineCount">0</strong> 位其他玩家在線</div>
           </div>
           <div id="roomGameTabs" class="room-game-tabs" aria-label="選擇遊戲"></div>
@@ -173,7 +173,7 @@
             <aside class="lobby-side panel">
               <span class="eyebrow">YOUR SEAT</span><h2>我的座位</h2>
               <div class="my-player-card"><div id="lobbyAvatar" class="avatar">棋</div><div><strong id="lobbyName">棋手</strong><span><i></i> 在線・可接受邀請</span></div></div>
-              <div class="lobby-tip"><b>邀</b><p>點選玩家後，可設定遊戲、先後手、賽制與每步時間。</p></div>
+              <div class="lobby-tip"><b>邀</b><p>每款遊戲都能直接邀請；多人遊戲可設定座位數，開局時全房一起倒數。</p></div>
             </aside>
           </div>
         </section>
@@ -255,7 +255,7 @@
     </dialog>
 
     <dialog id="roomWaitingDialog" class="modal room-waiting-modal">
-      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">ROOM READY</span><h2 id="waitingRoomTitle">遊戲房間</h2><p id="waitingRoomStatus">正在取得房間成員…</p><div id="waitingRoomPlayers" class="waiting-room-players"></div><p id="waitingRoomAi" class="waiting-room-ai"></p><div id="waitingRoomAiChoice" class="waiting-room-ai-choice" hidden><strong>剩餘座位怎麼安排？</strong><p>第二位真人已加入，現在可以繼續等真人，或請 AI 補滿空位。</p><div><button id="waitForHumanPlayers" class="secondary-button" type="button">繼續等真人</button><button id="fillRoomWithAi" class="primary-button" type="button">AI 補滿空位</button></div></div><button id="enterRoomGame" class="primary-button full" type="button">進入遊戲設定 →</button></form>
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">ROOM READY</span><h2 id="waitingRoomTitle">遊戲房間</h2><p id="waitingRoomStatus">正在取得房間成員…</p><div id="waitingRoomCountdown" class="room-start-countdown" hidden><strong>5</strong><span>遊戲準備開始</span></div><div id="waitingRoomPlayers" class="waiting-room-players"></div><p id="waitingRoomAi" class="waiting-room-ai"></p><div id="waitingRoomAiChoice" class="waiting-room-ai-choice" hidden><strong>剩餘座位怎麼安排？</strong><p>第二位真人已加入，現在可以繼續等真人，或請 AI 補滿空位。</p><div><button id="waitForHumanPlayers" class="secondary-button" type="button">繼續等真人</button><button id="fillRoomWithAi" class="primary-button" type="button">AI 補滿空位</button></div></div><button id="enterRoomGame" class="primary-button full" type="button">設定並開始 →</button></form>
     </dialog>
 
     <dialog id="gameRulesDialog" class="modal rules-modal">
@@ -265,33 +265,31 @@
     <dialog id="onlineSeriesDialog" class="modal">
       <form method="dialog">
         <button class="modal-close" value="cancel" aria-label="關閉">×</button>
-        <span class="eyebrow">ONLINE SERIES</span><h2>設定對戰賽制</h2><p>邀請 <strong id="onlineOpponentName">棋手</strong> 進行系列賽；每局會自動交換先後手。</p>
-        <fieldset><legend>選擇遊戲</legend><div class="choice-grid series-grid">
-          <label><input type="radio" name="gameType" value="gomoku" checked><span><b>五子棋</b><small>19×19 棋盤</small></span></label>
-          <label><input type="radio" name="gameType" value="xiangqi"><span><b>中國象棋</b><small>經典規則</small></span></label>
-        </div></fieldset>
-        <fieldset><legend>系列賽制</legend><div class="choice-grid series-grid">
+        <span class="eyebrow">GAME INVITATION</span><h2>設定遊戲邀請</h2><p>邀請 <strong id="onlineOpponentName">玩家</strong> 加入房間；人員到齊後由房主統一開局。</p>
+        <fieldset><legend>選擇遊戲</legend><label class="modal-select"><span>遊戲</span><select id="onlineInviteGameSelect" name="gameType"></select></label></fieldset>
+        <fieldset id="onlineInvitePlayerFieldset"><legend>房間人數</legend><label class="modal-select"><span>座位</span><select id="onlineInvitePlayerCount" name="maxPlayers"></select></label></fieldset>
+        <fieldset id="onlineSeriesFieldset"><legend>系列賽制</legend><div class="choice-grid series-grid">
           <label><input type="radio" name="bestOf" value="3" checked><span><b>三戰兩勝</b><small>先拿 2 勝</small></span></label>
           <label><input type="radio" name="bestOf" value="5"><span><b>五戰三勝</b><small>先拿 3 勝</small></span></label>
         </div></fieldset>
-        <fieldset><legend>第一局邀請者執棋順序</legend><div class="choice-grid color-grid">
+        <fieldset id="onlineFirstMoveFieldset"><legend>第一局邀請者執棋順序</legend><div class="choice-grid color-grid">
           <label><input type="radio" name="inviterColor" value="black" checked><span><i class="mini-stone black-stone"></i>我先手</span></label>
           <label><input type="radio" name="inviterColor" value="white"><span><i class="mini-stone white-stone"></i>我後手</span></label>
         </div></fieldset>
-        <fieldset><legend>每步思考時間</legend><div class="choice-grid time-grid">
+        <fieldset id="onlineTurnTimeFieldset"><legend>每步思考時間</legend><div class="choice-grid time-grid">
           <label><input type="radio" name="turnTimeMinutes" value="1"><span><b>1 分鐘</b><small>快速對局</small></span></label>
           <label><input type="radio" name="turnTimeMinutes" value="3" checked><span><b>3 分鐘</b><small>標準時間</small></span></label>
           <label><input type="radio" name="turnTimeMinutes" value="5"><span><b>5 分鐘</b><small>充分思考</small></span></label>
           <label><input type="radio" name="turnTimeMinutes" value="10"><span><b>10 分鐘</b><small>長考對局</small></span></label>
         </div></fieldset>
-        <p>時間用完仍未落子時，伺服器會從空位隨機替該玩家下一步。</p>
+        <p id="onlineInviteHint">時間用完仍未落子時，伺服器會從空位隨機替該玩家下一步。</p>
         <button id="confirmOnlineInvite" class="primary-button full" value="default" type="button">送出對戰邀請 →</button>
       </form>
     </dialog>
 
     <dialog id="inviteDialog" class="modal invite-modal">
       <form method="dialog">
-        <div class="invite-icon">⚔</div><span class="eyebrow">MATCH INVITATION</span><h2>收到對戰邀請</h2><p><strong id="inviterName">棋手</strong> 想與你進行一對一<span id="inviteGameName">五子棋</span>對戰。<br><span id="inviterSeriesLabel">三戰兩勝・每步 3 分鐘・每局交換先後手</span></p>
+        <div class="invite-icon">⚔</div><span class="eyebrow">GAME INVITATION</span><h2>收到遊戲邀請</h2><p><strong id="inviterName">玩家</strong> 邀請你加入 <span id="inviteGameName">五子棋</span>。<br><span id="inviterSeriesLabel">接受後會進入房間等待開局</span></p>
         <div class="invite-actions"><button id="declineInvite" value="cancel" type="button">婉拒</button><button id="acceptInvite" class="primary-button" value="default" type="button">接受對戰</button></div>
       </form>
     </dialog>
@@ -314,7 +312,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-11"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-11"></script>
+    <script type="module" src="./src/app.js?v=neighbor-12"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-12"></script>
   </body>
 </html>
