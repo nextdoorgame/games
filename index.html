@@ -3,9 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#f7f6f1" />
+    <meta name="theme-color" content="#ffffff" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=neighbor-9" />
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-10" />
+    <link rel="stylesheet" href="./src/wood-theme.css?v=wood-1" />
   </head>
   <body>
     <div class="app-shell">
@@ -49,15 +50,16 @@
         <section id="homeView" class="view active">
           <div class="welcome platform-welcome">
             <div>
-              <h1>今晚，隔壁開桌</h1>
+              <h1>今晚，<br class="mobile-hero-break">隔壁開桌</h1>
               <p>十五款經典遊戲，和家人朋友隨時開一桌。</p>
             </div>
             <div class="welcome-table" aria-hidden="true"><i>帥</i><span></span><b></b></div>
           </div>
 
-          <div class="section-heading"><div><h2>選擇遊戲</h2></div><div id="gameFilters" class="game-filters" aria-label="遊戲分類"><button class="active" data-filter="all" type="button">全部</button><button data-filter="board" type="button">棋類</button><button data-filter="card" type="button">牌類</button><button data-filter="arcade" type="button">街機</button></div></div>
+          <div class="game-catalog">
+            <div class="section-heading"><div><h2>選擇遊戲</h2></div><div id="gameFilters" class="game-filters" aria-label="遊戲分類"><button class="active" data-filter="all" type="button">全部</button><button data-filter="board" type="button">棋類</button><button data-filter="card" type="button">牌類</button><button data-filter="arcade" type="button">街機</button></div></div>
 
-          <div class="game-library expanded-games">
+            <div class="game-library expanded-games">
             <article class="game-card gomoku-game-card" data-category="board">
               <div class="game-card-head"><div><span class="game-emblem gomoku-emblem"><i></i><i></i></span><h3>五子棋</h3></div><p>19×19 棋盤・三級 AI・即時對戰</p></div>
               <div class="game-preview gomoku-preview" aria-hidden="true">
@@ -149,9 +151,10 @@
               <div class="game-preview brickbreaker-preview" aria-hidden="true"><span></span><i></i><i></i><i></i><i></i><i></i><i></i><b></b><em></em></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="brickbreaker" aria-label="開始隔壁打磚塊遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="brickbreaker" aria-label="前往隔壁打磚塊房間大廳" type="button">雙人房間</button></div>
             </article>
-          </div>
+            </div>
 
-          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；第二位真人加入後，可選擇繼續等待或讓 AI 補滿剩餘座位。</p>
+            <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；第二位真人加入後，可選擇繼續等待或讓 AI 補滿剩餘座位。</p>
+          </div>
         </section>
 
         <section id="lobbyView" class="view">
