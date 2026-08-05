@@ -29,17 +29,20 @@ function resetVolleyRound(game, serving) {
   game.ball = { x: server.x, y: server.y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 };
   game.roundDelay = 0;
   game.countdown = VOLLEY_COUNTDOWN_FRAMES;
+  game.lastSpike = null;
 }
 
 function volleyAi(game) {
   if (game.frame % 18 !== 0 && game.aiInput) return game.aiInput;
   const ball = game.ball, player = game.players[1];
   const target = ball.x > 405 ? clamp(ball.x + ball.vx * 5, 455, 745) : 635;
+  const attack = Math.abs(ball.x - player.x) < 58 && ball.y < player.y + 12;
   game.aiInput = {
     left: player.x > target + 10,
     right: player.x < target - 10,
     up: ball.x > 420 && Math.abs(ball.x - player.x) < 70 && ball.y > 205 && ball.y < 325,
-    action: Math.abs(ball.x - player.x) < 58 && ball.y < player.y + 12
+    down: attack && ball.x < 535,
+    action: attack
   };
   return game.aiInput;
 }
@@ -60,9 +63,30 @@ function collideVolleyPlayer(game, index, input) {
   const dx = ball.x - px, dy = ball.y - py;
   const distance = Math.hypot(dx, dy);
   if (distance >= 55 || distance === 0) return;
-  const strength = input.action ? 7.6 : 6.1;
+  const airborne = player.y < VOLLEY_PLAYER_Y - 5;
+  if (input.action && airborne) {
+    const facing = index === 0 ? 1 : -1;
+    const forward = index === 0 ? input.right : input.left;
+    const backward = index === 0 ? input.left : input.right;
+    let shot;
+    if (input.down && forward) shot = { vx: facing * 8.8, vy: 5.6, kind: "forward-down", label: "強力斜下殺" };
+    else if (input.down && backward) shot = { vx: -facing * 6.7, vy: 4.8, kind: "reverse-down", label: "反向斜下殺" };
+    else if (input.down) shot = { vx: facing * 3.8, vy: 8.2, kind: "down", label: "近網直下殺" };
+    else if (input.up && forward) shot = { vx: facing * 7.2, vy: -5.6, kind: "forward-up", label: "前上方高球" };
+    else if (input.up) shot = { vx: facing * 5.1, vy: -7.2, kind: "up", label: "斜上高球" };
+    else if (forward) shot = { vx: facing * 9.1, vy: -.7, kind: "flat", label: "前方平殺" };
+    else if (backward) shot = { vx: -facing * 7.4, vy: -.9, kind: "reverse", label: "反向平殺" };
+    else shot = { vx: facing * 7.3, vy: 2.9, kind: "angled", label: "斜角殺球" };
+    ball.vx = shot.vx;
+    ball.vy = shot.vy;
+    ball.x = px + Math.sign(shot.vx || facing) * 48;
+    ball.y = player.y - 18;
+    game.lastSpike = { player: index, kind: shot.kind, label: shot.label, frame: game.frame };
+    return;
+  }
+  const strength = 6.1;
   ball.vx = dx / distance * strength + player.vx * .35;
-  ball.vy = Math.min(-4.6, dy / distance * strength - (input.action ? 2.8 : .8));
+  ball.vy = Math.min(-4.6, dy / distance * strength - .8);
   ball.x = px + dx / distance * 56;
   ball.y = py + dy / distance * 56;
 }

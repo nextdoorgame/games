@@ -7,8 +7,8 @@ import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseCh
 import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
 import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
-import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-7";
-import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-7";
+import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-8";
+import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-8";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 
 const GAMES = {
@@ -43,7 +43,7 @@ const GAME_RULES = {
   pickred: { summary: "從桌面湊成十點吃牌，累積紅色牌分數。", steps: ["輪流從手牌打出一張，能與桌面牌湊成十點時可吃走。", "J、Q、K 依遊戲設定配對同點數牌。", "牌局結束後計算吃到的紅心與方塊牌，分數最高者獲勝。"] },
   ninetynine: { summary: "輪流出牌累加點數，總數不能超過 99。", steps: ["每回合打出一張牌並依牌面效果調整總點數。", "部分牌可指定加減或改變出牌方向。", "無法合法出牌或使總數超過 99 的玩家淘汰，最後存活者獲勝。"] },
   tetris: { summary: "移動與旋轉方塊，完成橫列來消除得分。", steps: ["方向鍵左右移動，↑ 旋轉，↓ 軟降，空白鍵硬降。", "填滿完整橫列後該列會消除並增加分數。", "方塊堆到棋盤頂端即結束；雙人房可同步查看對手進度。"] },
-  volleyball: { summary: "移動、跳躍與扣球，率先得到 7 分。", steps: ["每球開始前倒數 3 秒，球會放在發球玩家頭頂。", "方向鍵左右移動，↑ 跳躍，↓ 或空白鍵扣球。", "讓球落在對方場地即可得 1 分；率先得到 7 分者獲勝。"] },
+  volleyball: { summary: "移動、跳躍與有角度的殺球，率先得到 7 分。", steps: ["每球開始前倒數 3 秒，球會放在發球玩家頭頂。", "空中按攻擊鍵殺球；搭配前方是平殺、↓ 是直下殺、前方＋↓ 是強力斜下殺。", "搭配 ↑ 可打斜上高球、搭配後方可反向殺球；讓球落在對方場地即可得分。"] },
   racing: { summary: "避開障礙並保留耐久，跑出更高分數。", steps: ["使用方向鍵控制車輛左右與加減速。", "撞上三角錐、油漬或路障會損失耐久與分數。", "抵達終點或有人耐久歸零時，以耐久與分數判定勝負。"] }
 };
 
@@ -503,8 +503,8 @@ window.addEventListener("keydown", (event) => {
 
 const isArcadeGame = (game) => game === "volleyball" || game === "racing";
 function arcadeInput(player = 0) {
-  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeKeys.ArrowDown || arcadeTouch.action };
-  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyS };
+  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeTouch.action };
+  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyF || arcadeKeys.Enter };
 }
 
 function arcadeCanvasDraw() {
@@ -525,7 +525,8 @@ function renderArcadeStatus() {
   if (state.engine.winner !== null) statusEl.textContent = state.engine.winner === -1 ? "本局平手，重新開始再比一次！" : `${state.engine.winner === 0 ? names[0] : names[1]} 獲勝！`;
   else if (countingDown) statusEl.textContent = `倒數 ${Math.max(1, Math.ceil(state.engine.countdown / 60))} 秒後開始。`;
   else if (state.room && !opponent) statusEl.textContent = "等待第二位玩家加入；目前由 AI 陪你暖身。";
-  else statusEl.textContent = state.game === "volleyball" ? "先得到 7 分獲勝；靠近球時按 ↓ 或空白鍵扣球。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
+  else if (state.game === "volleyball" && state.engine.lastSpike && state.engine.frame - state.engine.lastSpike.frame < 42) statusEl.textContent = `玩家 ${state.engine.lastSpike.player + 1}：${state.engine.lastSpike.label}`;
+  else statusEl.textContent = state.game === "volleyball" ? "空中按空白鍵殺球；同時搭配方向鍵可控制平殺、斜上或斜下角度。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
 }
 
 function arcadeLoop() {
@@ -574,14 +575,14 @@ async function syncArcadeRoom() {
 
 function startArcadeGame(game, players, room) {
   state = { ...state, players, room, engine: game === "volleyball" ? createVolleyballState() : createRacingState(), arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, syncWarningShown: false };
-  boardEl.innerHTML = '<div class="arcade-stage"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls"><button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">動作</button></div></div>';
+  boardEl.innerHTML = '<div class="arcade-stage"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls"><button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button></div></div>';
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
     const key = button.dataset.arcade;
     const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; };
     const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; };
     button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
   });
-  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，↑ 跳躍，↓／空白鍵扣球；本機玩家 2：A、D 移動，W 跳躍，S 扣球。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。";
+  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，空白鍵殺球；空中搭配前、後、↑、↓ 可改變角度。玩家 2：W／A／S／D 移動，F 或 Enter 殺球。前＋↓＋殺球是強力斜下殺。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
   if (room && ROOM_API) { syncArcadeRoom(); arcadeSyncTimer = setInterval(syncArcadeRoom, 90); }
@@ -589,7 +590,7 @@ function startArcadeGame(game, players, room) {
 
 window.addEventListener("keydown", (event) => {
   if (!isArcadeGame(state?.game) || !document.querySelector("#casualView").classList.contains("active") || setup.open) return;
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS"].includes(event.code)) { event.preventDefault(); arcadeKeys[event.code] = true; }
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS", "KeyF", "Enter"].includes(event.code)) { event.preventDefault(); arcadeKeys[event.code] = true; }
   if (event.code === "KeyP") { event.preventDefault(); state.arcadePaused = !state.arcadePaused; primary.textContent = state.arcadePaused ? "繼續遊戲" : "暫停遊戲"; renderArcadeStatus(); }
 });
 window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; } });

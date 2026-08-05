@@ -1,4 +1,4 @@
-import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-7";
+import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-8";
 
 function pixelText(ctx, text, x, y, size = 22, align = "left", color = "#fff") {
   ctx.save(); ctx.font = `700 ${size}px monospace`; ctx.textAlign = align; ctx.textBaseline = "middle";
@@ -42,6 +42,11 @@ export function drawVolleyball(canvas, game) {
   ctx.fillStyle = "#5b5145"; ctx.fillRect(393, 208, 14, 184); ctx.fillStyle = "#eee7cf"; ctx.fillRect(386, 212, 28, 8); ctx.fillRect(386, 384, 28, 8);
   ctx.strokeStyle = "rgba(35,48,53,.75)"; ctx.lineWidth = 2; for (let y = 225; y < 380; y += 16) { ctx.beginPath(); ctx.moveTo(356, y); ctx.lineTo(444, y); ctx.stroke(); } for (let x = 356; x <= 444; x += 11) { ctx.beginPath(); ctx.moveTo(x, 220); ctx.lineTo(x, 388); ctx.stroke(); }
   drawMouse(ctx, game.players[0], 1, game.ball.x < 400 && Math.abs(game.ball.x - game.players[0].x) < 80); drawMouse(ctx, game.players[1], -1, game.ball.x > 400 && Math.abs(game.ball.x - game.players[1].x) < 80); drawVolleyBall(ctx, game.ball);
+  if (game.lastSpike && game.frame - game.lastSpike.frame < 42) {
+    const opacity = 1 - (game.frame - game.lastSpike.frame) / 42;
+    ctx.save(); ctx.globalAlpha = opacity; ctx.strokeStyle = "#ffe369"; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(game.ball.x - game.ball.vx * 6, game.ball.y - game.ball.vy * 6); ctx.lineTo(game.ball.x, game.ball.y); ctx.stroke(); ctx.restore();
+    pixelText(ctx, game.lastSpike.label, 400, 102, 20, "center", "#fff3a5");
+  }
   pixelText(ctx, String(game.players[0].score).padStart(2, "0"), 65, 42, 34, "center", "#ffdf48"); pixelText(ctx, String(game.players[1].score).padStart(2, "0"), 735, 42, 34, "center", "#ffdf48");
   pixelText(ctx, "先得 7 分", 400, 34, 16, "center", "#fff8df");
   if (game.countdown > 0) {
