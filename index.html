@@ -152,7 +152,7 @@
         <section id="lobbyView" class="view">
           <div class="page-heading">
             <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p id="roomLobbyDescription">選擇在線玩家，設定賽制後送出一對一邀請。</p></div>
-            <div class="online-badge"><i></i><strong id="onlineCount">1</strong> 人在線</div>
+            <div class="online-badge"><i></i><strong id="onlineCount">0</strong> 位其他玩家在線</div>
           </div>
           <div id="roomGameTabs" class="room-game-tabs" aria-label="選擇遊戲"></div>
           <div id="roomLobbyLayout" class="room-lobby-layout" hidden>
@@ -249,6 +249,14 @@
       <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><h2 id="casualSetupTitle">遊戲設定</h2><p id="casualSetupDescription"></p><fieldset><legend>參加人數</legend><div id="casualPlayerOptions" class="choice-grid series-grid"></div></fieldset><fieldset id="casualDifficultyFieldset"><legend>AI 難度</legend><div class="choice-grid difficulty-grid"><label><input type="radio" name="casualDifficulty" value="easy"><span><b>初級</b><small>適合熟悉規則</small></span></label><label><input type="radio" name="casualDifficulty" value="medium" checked><span><b>進階</b><small>平衡攻守</small></span></label><label><input type="radio" name="casualDifficulty" value="hard"><span><b>困難</b><small>較深策略</small></span></label></div></fieldset><fieldset id="casualSpeedFieldset" hidden><legend>方塊速度</legend><div class="choice-grid speed-grid"><label><input type="radio" name="casualSpeed" value="slow"><span><b>悠閒</b><small>850 ms</small></span></label><label><input type="radio" name="casualSpeed" value="normal" checked><span><b>標準</b><small>560 ms</small></span></label><label><input type="radio" name="casualSpeed" value="fast"><span><b>快速</b><small>310 ms</small></span></label><label><input type="radio" name="casualSpeed" value="extreme"><span><b>極速</b><small>150 ms</small></span></label></div></fieldset><button id="startCasual" class="primary-button full" type="button">開始遊戲 →</button></form>
     </dialog>
 
+    <dialog id="roomWaitingDialog" class="modal room-waiting-modal">
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">ROOM READY</span><h2 id="waitingRoomTitle">遊戲房間</h2><p id="waitingRoomStatus">正在取得房間成員…</p><div id="waitingRoomPlayers" class="waiting-room-players"></div><p id="waitingRoomAi" class="waiting-room-ai"></p><button id="enterRoomGame" class="primary-button full" type="button">進入遊戲設定 →</button></form>
+    </dialog>
+
+    <dialog id="gameRulesDialog" class="modal rules-modal">
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">HOW TO PLAY</span><h2 id="gameRulesTitle">遊戲規則</h2><p id="gameRulesSummary"></p><ol id="gameRulesList"></ol><button class="secondary-button full" value="cancel" type="submit">知道了</button></form>
+    </dialog>
+
     <dialog id="onlineSeriesDialog" class="modal">
       <form method="dialog">
         <button class="modal-close" value="cancel" aria-label="關閉">×</button>
@@ -301,7 +309,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-7"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-7"></script>
+    <script type="module" src="./src/app.js?v=neighbor-8"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-8"></script>
   </body>
 </html>

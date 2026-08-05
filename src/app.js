@@ -1,5 +1,5 @@
 import { shouldApplyOnlineSnapshot } from "./game-sync.js";
-import { playerId } from "./player-identity.js?v=neighbor-7";
+import { deviceId, playerId } from "./player-identity.js?v=neighbor-8";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
 
@@ -652,8 +652,8 @@ async function fetchLobby() {
   if (isFetchingLobby) return;
   isFetchingLobby = true;
   try {
-    const data = await api(`/api/lobby?playerId=${encodeURIComponent(playerId)}&name=${encodeURIComponent(playerName)}`);
-    els.onlineCount.textContent = String(data.onlineCount);
+    const data = await api(`/api/lobby?playerId=${encodeURIComponent(playerId)}&deviceId=${encodeURIComponent(deviceId)}&name=${encodeURIComponent(playerName)}`);
+    els.onlineCount.textContent = String(Math.max(0, data.onlineCount - 1));
     els.lobbyCount.textContent = String(Math.max(0, data.onlineCount - 1));
     renderPlayers(data.players);
     window.dispatchEvent(new CustomEvent("neighbor-online-players", { detail: data.players }));

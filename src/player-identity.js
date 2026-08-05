@@ -1,8 +1,11 @@
 const STORAGE_KEY = "gomoku-player-id";
+const DEVICE_KEY = "neighbor-device-id";
 const LEASE_PREFIX = "neighbor-player-lease:";
 const LEASE_TTL = 6_000;
 const instanceId = crypto.randomUUID();
 let playerId = sessionStorage.getItem(STORAGE_KEY) || crypto.randomUUID();
+const deviceId = localStorage.getItem(DEVICE_KEY) || crypto.randomUUID();
+localStorage.setItem(DEVICE_KEY, deviceId);
 
 function readLease(id) {
   try { return JSON.parse(localStorage.getItem(`${LEASE_PREFIX}${id}`) || "null"); }
@@ -36,4 +39,4 @@ function releaseIdentity() {
 }
 window.addEventListener("pagehide", releaseIdentity, { once: true });
 
-export { playerId };
+export { deviceId, playerId };

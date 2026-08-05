@@ -85,7 +85,7 @@ function cleanupLobby() {
 }
 
 function publicRoom(room) {
-  return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players, gameId: room.gameId || null, createdAt: room.createdAt, updatedAt: room.updatedAt };
+  return { id: room.id, gameType: room.gameType, name: room.name, maxPlayers: room.maxPlayers, aiFill: room.aiFill, status: room.status, players: room.players.map(({ id, name }) => ({ id, name })), gameId: room.gameId || null, createdAt: room.createdAt, updatedAt: room.updatedAt };
 }
 
 function safeTetrisSnapshot(value) {
@@ -291,12 +291,20 @@ async function handleApi(req, res, url) {
     const allowed = ROOM_PLAYER_LIMITS[gameType];
     const maxPlayers = allowed.includes(Number(body.maxPlayers)) ? Number(body.maxPlayers) : allowed.at(-1);
     const hostId = String(body.hostId || "").trim();
+    const hostDeviceId = String(body.hostDeviceId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
     const aiFill = Boolean(body.aiFill);
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: aiFill ? "ready" : "waiting", players: [{ id: hostId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: aiFill ? "ready" : "waiting", players: [{ id: hostId, deviceId: hostDeviceId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
+  }
+
+  const roomDetailMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)$/);
+  if (req.method === "GET" && roomDetailMatch) {
+    const room = rooms.get(roomDetailMatch[1]);
+    if (!room) return sendJson(res, 404, { error: "房間已關閉" });
+    return sendJson(res, 200, publicRoom(room));
   }
 
   const roomJoinMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/join$/);
@@ -305,11 +313,17 @@ async function handleApi(req, res, url) {
     if (!room) return sendJson(res, 404, { error: "房間已關閉" });
     const body = await readJson(req);
     const playerId = String(body.playerId || "").trim();
+    const deviceId = String(body.deviceId || "").trim();
     const playerName = String(body.playerName || "棋手").trim().slice(0, 16);
     if (!playerId) return sendJson(res, 400, { error: "缺少玩家資料" });
-    if (!room.players.some((player) => player.id === playerId)) {
+    const existingPlayer = room.players.find((player) => player.id === playerId || deviceId && player.deviceId === deviceId);
+    if (existingPlayer) {
+      existingPlayer.id = playerId;
+      existingPlayer.deviceId = deviceId;
+      existingPlayer.name = playerName;
+    } else {
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
-      room.players.push({ id: playerId, name: playerName });
+      room.players.push({ id: playerId, deviceId, name: playerName });
     }
     if (["gomoku", "xiangqi"].includes(room.gameType) && room.players.length === 2 && !room.gameId) {
       const game = createOnlineMatch({ gameType: room.gameType, playerOne: room.players[0], playerTwo: room.players[1] });
@@ -355,9 +369,11 @@ async function handleApi(req, res, url) {
 
   if (req.method === "GET" && url.pathname === "/api/lobby") {
     const playerId = url.searchParams.get("playerId")?.trim();
+    const deviceId = url.searchParams.get("deviceId")?.trim() || "";
     const name = url.searchParams.get("name")?.trim().slice(0, 16);
     if (!playerId || !name) return sendJson(res, 400, { error: "缺少玩家資料" });
-    players.set(playerId, { id: playerId, name, seenAt: Date.now() });
+    if (deviceId) for (const [id, player] of players) if (id !== playerId && player.deviceId === deviceId) players.delete(id);
+    players.set(playerId, { id: playerId, deviceId, name, seenAt: Date.now() });
     cleanupLobby();
     const incomingInvites = [...invites.values()].filter((invite) => invite.toId === playerId && invite.status === "pending");
     const outgoingInvites = [...invites.values()].filter((invite) => invite.fromId === playerId && invite.status === "pending");

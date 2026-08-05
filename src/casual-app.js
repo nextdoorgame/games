@@ -9,7 +9,7 @@ import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjac
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
 import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-6";
 import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-6";
-import { playerId as roomPlayerId } from "./player-identity.js?v=neighbor-7";
+import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 
 const GAMES = {
   gomoku: { name: "五子棋", players: [2], mode: "19×19 棋盤" },
@@ -29,6 +29,24 @@ const GAMES = {
   racing: { name: "賽車障礙", players: [2], mode: "雙車障礙競速" }
 };
 
+const GAME_RULES = {
+  gomoku: { summary: "在 19×19 棋盤輪流落子，率先連成五子者獲勝。", steps: ["黑棋先手，雙方輪流在空的交叉點落下一子。", "橫、直或斜線連續五枚同色棋子即獲勝。", "棋子落下後不能移動；棋盤填滿且無五連則為和棋。"] },
+  xiangqi: { summary: "紅方先行，以將死或困斃對方將帥為目標。", steps: ["車走直線、馬走日、象走田、士守九宮、炮隔子吃棋。", "將與帥不能在同一直線直接照面。", "讓對方將帥無法解除被攻擊狀態即可獲勝。"] },
+  reversi: { summary: "夾住對方棋子並翻成自己的顏色。", steps: ["落子後必須至少在一個方向夾住對方棋子。", "被夾住的棋子全部翻成落子方顏色。", "雙方都無合法落點時結束，棋子較多者獲勝。"] },
+  checkers: { summary: "移動或連跳棋子，率先把全部棋子送到對面營區。", steps: ["每回合可走到相鄰空位，或跳過相鄰棋子到後方空位。", "一次回合可連續跳躍，但不能停在已有棋子的洞位。", "全部棋子進入正對面的目標營區即獲勝。"] },
+  mahjong: { summary: "家庭自摸版麻將，湊成四組面子加一對將。", steps: ["使用 136 張牌，不含花牌；每位玩家起手 13 張。", "輪到自己時摸一張牌，再打出一張。", "四組順子或刻子加一對相同牌即可自摸胡牌。"] },
+  bigtwo: { summary: "以 3♦ 首攻，率先出完手牌者獲勝。", steps: ["可出單張、對子、三條或合法五張牌型。", "點數由 3 到 2，花色由方塊、梅花、紅心到黑桃。", "必須壓過桌面牌型；無法或不想出牌時可選擇過牌。"] },
+  banqi: { summary: "翻開暗棋決定陣營，移動並吃掉對方棋子。", steps: ["第一枚翻開的棋子決定玩家陣營。", "一般棋子每次走一格；炮必須隔一枚棋子才能吃子。", "依階級吃子，兵可吃將而將不能吃兵；消滅對方即獲勝。"] },
+  chess: { summary: "白方先行，以將死對方國王為目標。", steps: ["各棋子依西洋棋規則移動，兵首次可前進兩格。", "支援王車易位、吃過路兵與兵升變。", "國王被攻擊且沒有任何合法解圍走法時即為將死。"] },
+  go: { summary: "13 路圍棋，包圍地盤並提取無氣棋群。", steps: ["黑方先行，雙方輪流在空交叉點落子。", "完全沒有氣的棋群會被提走；禁止自殺與立即重複劫形。", "雙方連續停著後計算棋子與領地，白方貼 6.5 目。"] },
+  blackjack: { summary: "讓手牌接近 21 點但不能超過，並擊敗莊家。", steps: ["A 可算 1 或 11，J、Q、K 算 10 點。", "玩家可選擇補牌或停牌；超過 21 點立即爆牌。", "莊家 16 點以下補牌、17 點以上停牌，較接近 21 點者獲勝。"] },
+  pickred: { summary: "從桌面湊成十點吃牌，累積紅色牌分數。", steps: ["輪流從手牌打出一張，能與桌面牌湊成十點時可吃走。", "J、Q、K 依遊戲設定配對同點數牌。", "牌局結束後計算吃到的紅心與方塊牌，分數最高者獲勝。"] },
+  ninetynine: { summary: "輪流出牌累加點數，總數不能超過 99。", steps: ["每回合打出一張牌並依牌面效果調整總點數。", "部分牌可指定加減或改變出牌方向。", "無法合法出牌或使總數超過 99 的玩家淘汰，最後存活者獲勝。"] },
+  tetris: { summary: "移動與旋轉方塊，完成橫列來消除得分。", steps: ["方向鍵左右移動，↑ 旋轉，↓ 軟降，空白鍵硬降。", "填滿完整橫列後該列會消除並增加分數。", "方塊堆到棋盤頂端即結束；雙人房可同步查看對手進度。"] },
+  volleyball: { summary: "移動、跳躍與扣球，率先得到 7 分。", steps: ["方向鍵左右移動，↑ 跳躍，↓ 或空白鍵扣球。", "讓球落在對方場地即可得 1 分。", "球不能穿過球網；率先得到 7 分者獲勝。"] },
+  racing: { summary: "避開障礙並保留耐久，跑出更高分數。", steps: ["使用方向鍵控制車輛左右與加減速。", "撞上三角錐、油漬或路障會損失耐久與分數。", "抵達終點或有人耐久歸零時，以耐久與分數判定勝負。"] }
+};
+
 const tabs = document.querySelector("#roomGameTabs");
 const roomList = document.querySelector("#roomList");
 const roomTitle = document.querySelector("#roomLobbyTitle");
@@ -39,6 +57,16 @@ const roomCount = document.querySelector("#roomPlayerCount");
 const roomName = document.querySelector("#roomNameInput");
 const roomOnlinePlayers = document.querySelector("#roomOnlinePlayers");
 const roomAi = document.querySelector("#roomAiFill");
+const roomWaitingDialog = document.querySelector("#roomWaitingDialog");
+const waitingRoomTitle = document.querySelector("#waitingRoomTitle");
+const waitingRoomStatus = document.querySelector("#waitingRoomStatus");
+const waitingRoomPlayers = document.querySelector("#waitingRoomPlayers");
+const waitingRoomAi = document.querySelector("#waitingRoomAi");
+const enterRoomGame = document.querySelector("#enterRoomGame");
+const gameRulesDialog = document.querySelector("#gameRulesDialog");
+const gameRulesTitle = document.querySelector("#gameRulesTitle");
+const gameRulesSummary = document.querySelector("#gameRulesSummary");
+const gameRulesList = document.querySelector("#gameRulesList");
 const setup = document.querySelector("#casualSetupDialog");
 const setupTitle = document.querySelector("#casualSetupTitle");
 const setupDescription = document.querySelector("#casualSetupDescription");
@@ -57,6 +85,7 @@ const speedFieldset = document.querySelector("#casualSpeedFieldset");
 let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, selected = new Set();
 let enteringOnlineGameId = null;
 let arcadeSyncInFlight = false;
+let roomWaitingTimer = null;
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
 const ROOM_API = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
@@ -105,6 +134,60 @@ async function roomRequest(path, options = {}) {
   if (!response.ok) throw new Error(data.error || "房間服務暫時無法使用");
   return data;
 }
+
+function stopRoomWaiting() {
+  if (roomWaitingTimer) clearInterval(roomWaitingTimer);
+  roomWaitingTimer = null;
+}
+
+function renderWaitingRoom(room) {
+  if (!room) return;
+  const game = GAMES[room.gameType] || GAMES[roomGame];
+  const players = room.players || [];
+  const maxPlayers = room.maxPlayers || room.max || game.players.at(-1);
+  const aiSeats = room.aiFill ? Math.max(0, maxPlayers - players.length) : 0;
+  const isDuel = ["gomoku", "xiangqi"].includes(room.gameType);
+  pendingRoom = room;
+  waitingRoomTitle.textContent = `${game.name}・${room.name}`;
+  waitingRoomStatus.textContent = `${players.length}/${maxPlayers} 位真人已進房`;
+  waitingRoomPlayers.replaceChildren(...players.map((player, index) => {
+    const item = document.createElement("div");
+    item.className = "waiting-room-player";
+    item.innerHTML = "<span></span><strong></strong><small></small>";
+    item.querySelector("span").textContent = String(index + 1).padStart(2, "0");
+    item.querySelector("strong").textContent = player.name;
+    item.querySelector("small").textContent = player.id === roomPlayerId ? "你・已就座" : "玩家・已就座";
+    return item;
+  }));
+  waitingRoomAi.textContent = aiSeats ? `剩餘 ${aiSeats} 個位置會由 AI 補上。` : players.length < maxPlayers ? `正在等待 ${maxPlayers - players.length} 位玩家加入…` : "所有真人玩家都已到齊。";
+  enterRoomGame.disabled = isDuel ? !room.gameId : !room.aiFill && players.length < maxPlayers;
+  enterRoomGame.textContent = isDuel ? room.gameId ? "進入線上對局 →" : "等待另一位玩家…" : enterRoomGame.disabled ? "等待玩家到齊…" : "進入遊戲設定 →";
+}
+
+async function refreshWaitingRoom() {
+  if (!ROOM_API || !pendingRoom?.id || pendingRoom.id.startsWith("local-")) return;
+  try {
+    const room = await roomRequest(`/api/rooms/${pendingRoom.id}`);
+    if (!roomWaitingDialog.open || pendingRoom?.id !== room.id) return;
+    renderWaitingRoom(room);
+    if (room.gameId && ["gomoku", "xiangqi"].includes(room.gameType)) {
+      stopRoomWaiting();
+      roomWaitingDialog.close();
+      await window.GOMOKU_ONLINE?.startGame(room.gameId);
+    }
+  } catch (error) {
+    stopRoomWaiting();
+    waitingRoomStatus.textContent = error.message;
+  }
+}
+
+function openRoomWaiting(room) {
+  stopRoomWaiting();
+  renderWaitingRoom(room);
+  if (!roomWaitingDialog.open) roomWaitingDialog.showModal();
+  if (ROOM_API && !room.id.startsWith("local-")) roomWaitingTimer = setInterval(refreshWaitingRoom, 1000);
+}
+
 async function renderRooms() {
   let rooms = [];
   try {
@@ -121,8 +204,8 @@ async function renderRooms() {
     const aiSeats = room.ai ? Math.max(0, room.max - room.current) : 0;
     const spans = row.querySelectorAll("span"); spans[0].textContent = `${room.current}/${room.max}`; spans[1].textContent = `${room.players?.map((player) => player.name).join("、") || GAMES[roomGame].mode}${aiSeats ? ` ＋ ${aiSeats} AI` : ""}`; spans[2].textContent = room.status;
     const button = row.querySelector("button");
-    button.textContent = room.gameId && isMember ? "進入對局" : isMember ? "已在房內" : room.current >= room.max ? "房間已滿" : "加入房間";
-    button.disabled = isMember && !room.gameId || !isMember && room.current >= room.max;
+    button.textContent = room.gameId && isMember ? "進入對局" : isMember ? "進入房間" : room.current >= room.max ? "房間已滿" : "加入房間";
+    button.disabled = !isMember && room.current >= room.max;
     if (room.gameId && isMember && !enteringOnlineGameId && document.querySelector("#lobbyView").classList.contains("active")) {
       enteringOnlineGameId = room.gameId;
       window.GOMOKU_ONLINE?.startGame(room.gameId).catch((error) => { enteringOnlineGameId = null; toast(error.message); });
@@ -130,12 +213,14 @@ async function renderRooms() {
     button.addEventListener("click", async () => {
       try {
         if (room.gameId && isMember) { await window.GOMOKU_ONLINE?.startGame(room.gameId); return; }
+        if (isMember) { openRoomWaiting(room); return; }
         let joinedRoom = room;
-        if (ROOM_API && !room.id.startsWith("local-")) joinedRoom = await roomRequest(`/api/rooms/${room.id}/join`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, playerName: roomPlayerName() }) });
+        if (ROOM_API && !room.id.startsWith("local-")) joinedRoom = await roomRequest(`/api/rooms/${room.id}/join`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, deviceId: roomDeviceId, playerName: roomPlayerName() }) });
         if (["gomoku", "xiangqi"].includes(roomGame)) {
           if (joinedRoom.gameId) await window.GOMOKU_ONLINE?.startGame(joinedRoom.gameId);
-          else { await renderRooms(); toast("已進入房間，等待另一位玩家"); }
-        } else { pendingRoom = joinedRoom; openCasualSetup(roomGame); }
+          else openRoomWaiting(joinedRoom);
+        } else openRoomWaiting(joinedRoom);
+        await renderRooms();
       } catch (error) { toast(error.message); }
     });
     return row;
@@ -148,15 +233,47 @@ document.querySelector("#createRoom").addEventListener("click", async () => {
   const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = ["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(roomGame) && roomAi.checked;
   try {
     let createdRoom = null;
-    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostName: roomPlayerName() }) });
-    else { const rooms = storedRooms(); rooms.push({ id: `local-${crypto.randomUUID()}`, game: roomGame, name, current: 1, max, ai: aiFill, status: "等待中" }); saveRooms(rooms); }
+    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostDeviceId: roomDeviceId, hostName: roomPlayerName() }) });
+    else { const rooms = storedRooms(), localRoom = { id: `local-${crypto.randomUUID()}`, game: roomGame, gameType: roomGame, name, current: 1, max, maxPlayers: max, ai: aiFill, aiFill, status: "等待中", players: [{ id: roomPlayerId, name: roomPlayerName() }] }; rooms.push(localRoom); saveRooms(rooms); createdRoom = localRoom; }
     roomName.value = ""; await renderRooms(); toast(`已建立「${name}」`);
-    if (createdRoom && !["gomoku", "xiangqi"].includes(roomGame)) { pendingRoom = createdRoom; openCasualSetup(roomGame); }
-    else if (createdRoom) toast("房間已開放，等待另一位玩家加入");
+    if (createdRoom) openRoomWaiting(createdRoom);
   } catch (error) { toast(error.message); }
 });
 setRoomGame("gomoku");
 window.setInterval(() => { if (document.querySelector("#lobbyView").classList.contains("active")) renderRooms(); }, 3000);
+
+roomWaitingDialog.addEventListener("close", stopRoomWaiting);
+roomWaitingDialog.addEventListener("cancel", stopRoomWaiting);
+enterRoomGame.addEventListener("click", async () => {
+  if (!pendingRoom || enterRoomGame.disabled) return;
+  if (pendingRoom.gameId && ["gomoku", "xiangqi"].includes(pendingRoom.gameType)) {
+    stopRoomWaiting(); roomWaitingDialog.close();
+    await window.GOMOKU_ONLINE?.startGame(pendingRoom.gameId);
+    return;
+  }
+  stopRoomWaiting(); roomWaitingDialog.close(); openCasualSetup(pendingRoom.gameType);
+});
+
+document.querySelectorAll(".game-card").forEach((card) => {
+  const game = card.querySelector("[data-game-type]")?.dataset.gameType || card.querySelector("[data-room-game]")?.dataset.roomGame;
+  const actions = card.querySelector(".game-card-actions");
+  if (!game || !actions || actions.querySelector("[data-rules-game]")) return;
+  const button = document.createElement("button");
+  button.className = "rules-button"; button.type = "button"; button.dataset.rulesGame = game; button.textContent = "遊戲規則";
+  button.setAttribute("aria-label", `查看${GAMES[game].name}遊戲規則`);
+  actions.append(button);
+});
+
+document.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-rules-game]");
+  if (!button) return;
+  const game = button.dataset.rulesGame, rule = GAME_RULES[game];
+  if (!rule) return;
+  gameRulesTitle.textContent = `${GAMES[game].name}遊戲規則`;
+  gameRulesSummary.textContent = rule.summary;
+  gameRulesList.replaceChildren(...rule.steps.map((text) => { const item = document.createElement("li"); item.textContent = text; return item; }));
+  gameRulesDialog.showModal();
+});
 
 function openCasualSetup(game) {
   pendingGame = game; const meta = GAMES[game]; setupTitle.textContent = `設定${meta.name}遊戲`;
