@@ -22,10 +22,11 @@ const players = new Map();
 const invites = new Map();
 const games = new Map();
 const rooms = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris", "volleyball", "racing"]);
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris", "volleyball", "racing", "brickbreaker"]);
+const TABLE_ROOM_TYPES = new Set(["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"]);
 const ROOM_PLAYER_LIMITS = {
   gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
-  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2], volleyball: [2], racing: [2]
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2], volleyball: [2], racing: [2], brickbreaker: [2]
 };
 
 const contentTypes = {
@@ -64,7 +65,7 @@ async function readJson(req) {
   let total = 0;
   for await (const chunk of req) {
     total += chunk.length;
-    if (total > 20_000) throw new Error("Request too large");
+    if (total > 120_000) throw new Error("Request too large");
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -109,7 +110,15 @@ function safeArcadeInput(value) {
 function safeArcadeSnapshot(value, gameType) {
   if (!value || value.type !== gameType || !Array.isArray(value.players) || value.players.length !== 2) return null;
   try {
-    if (JSON.stringify(value).length > 15_000) return null;
+    if (JSON.stringify(value).length > 50_000) return null;
+    return structuredClone(value);
+  } catch { return null; }
+}
+
+function safeTableSnapshot(value, gameType) {
+  if (!value || value.game !== gameType) return null;
+  try {
+    if (JSON.stringify(value).length > 95_000) return null;
     return structuredClone(value);
   } catch { return null; }
 }
@@ -295,7 +304,7 @@ async function handleApi(req, res, url) {
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
     const aiFill = false;
-    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: maxPlayers === 1 ? "full" : "waiting", players: [{ id: hostId, deviceId: hostDeviceId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, createdAt: Date.now(), updatedAt: Date.now() };
+    const room = { id: randomUUID(), gameType, name: String(body.name || `${hostName}的房間`).trim().slice(0, 16), maxPlayers, aiFill, status: maxPlayers === 1 ? "full" : "waiting", players: [{ id: hostId, deviceId: hostDeviceId, name: hostName }], snapshots: gameType === "tetris" ? new Map() : null, arcadeInputs: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null, arcadeSnapshot: null, tableState: null, tableRevision: 0, createdAt: Date.now(), updatedAt: Date.now() };
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
   }
@@ -350,6 +359,35 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, publicRoom(room));
   }
 
+  const tableRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/table$/);
+  if (req.method === "POST" && tableRoomMatch) {
+    const room = rooms.get(tableRoomMatch[1]);
+    if (!room || !TABLE_ROOM_TYPES.has(room.gameType)) return sendJson(res, 404, { error: "多人牌局房間已關閉" });
+    const body = await readJson(req);
+    const playerId = String(body.playerId || "").trim();
+    const seat = room.players.findIndex((player) => player.id === playerId);
+    if (seat < 0) return sendJson(res, 403, { error: "你不在這個房間中" });
+    if (body.state) {
+      const snapshot = safeTableSnapshot(body.state, room.gameType);
+      if (!snapshot) return sendJson(res, 400, { error: "牌局資料格式不正確" });
+      const expectedRevision = Math.max(0, Number(body.revision) || 0);
+      if (body.initialize) {
+        if (seat !== 0) return sendJson(res, 403, { error: "只有房主可以建立或重開牌局" });
+      } else {
+        if (!room.tableState) return sendJson(res, 409, { error: "等待房主建立牌局" });
+        if (expectedRevision !== room.tableRevision) return sendJson(res, 409, { error: "牌局狀態已更新，正在重新同步" });
+        const currentTurn = Number(room.tableState.turn);
+        const actorAllowed = Number.isInteger(currentTurn) && currentTurn >= room.players.length ? seat === 0 : currentTurn === seat;
+        if (!actorAllowed) return sendJson(res, 403, { error: "目前不是你的回合" });
+      }
+      room.tableState = snapshot;
+      room.tableRevision += 1;
+      room.status = "playing";
+      room.updatedAt = Date.now();
+    }
+    return sendJson(res, 200, { room: publicRoom(room), state: room.tableState, revision: room.tableRevision });
+  }
+
   const tetrisRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/tetris$/);
   if (req.method === "POST" && tetrisRoomMatch) {
     const room = rooms.get(tetrisRoomMatch[1]);
@@ -368,7 +406,7 @@ async function handleApi(req, res, url) {
   const arcadeRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/arcade$/);
   if (req.method === "POST" && arcadeRoomMatch) {
     const room = rooms.get(arcadeRoomMatch[1]);
-    if (!room || !["volleyball", "racing"].includes(room.gameType)) return sendJson(res, 404, { error: "街機遊戲房間已關閉" });
+    if (!room || !["volleyball", "racing", "brickbreaker"].includes(room.gameType)) return sendJson(res, 404, { error: "街機遊戲房間已關閉" });
     const body = await readJson(req);
     const playerId = String(body.playerId || "").trim();
     if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#f7f6f1" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
-    <link rel="stylesheet" href="./src/styles.css?v=neighbor-5" />
+    <link rel="stylesheet" href="./src/styles.css?v=neighbor-6" />
   </head>
   <body>
     <div class="app-shell">
@@ -144,9 +144,14 @@
               <div class="game-preview racing-preview" aria-hidden="true"><span class="preview-car blue"></span><i></i><span class="preview-car red"></span><b></b><em></em></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="racing" aria-label="開始賽車障礙遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="racing" aria-label="前往賽車障礙房間大廳" type="button">雙人房間</button></div>
             </article>
+            <article class="game-card brickbreaker-game-card" data-category="arcade">
+              <div class="game-card-head"><div><span class="game-emblem">▤</span><h3>隔壁打磚塊</h3></div><p>經典闖關・雙板合作・左右對戰</p></div>
+              <div class="game-preview brickbreaker-preview" aria-hidden="true"><span></span><i></i><i></i><i></i><i></i><i></i><i></i><b></b><em></em></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="brickbreaker" aria-label="開始隔壁打磚塊遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="brickbreaker" aria-label="前往隔壁打磚塊房間大廳" type="button">雙人房間</button></div>
+            </article>
           </div>
 
-          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；多人牌局與中國跳棋會自動由 AI 補滿空位。</p>
+          <p id="onlineModeDescription" class="platform-note">每款遊戲都有獨立房間大廳；第二位真人加入後，可選擇繼續等待或讓 AI 補滿剩餘座位。</p>
         </section>
 
         <section id="lobbyView" class="view">
@@ -246,7 +251,7 @@
     </dialog>
 
     <dialog id="casualSetupDialog" class="modal">
-      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><h2 id="casualSetupTitle">遊戲設定</h2><p id="casualSetupDescription"></p><fieldset><legend>參加人數</legend><div id="casualPlayerOptions" class="choice-grid series-grid"></div></fieldset><fieldset id="casualDifficultyFieldset"><legend>AI 難度</legend><div class="choice-grid difficulty-grid"><label><input type="radio" name="casualDifficulty" value="easy"><span><b>初級</b><small>適合熟悉規則</small></span></label><label><input type="radio" name="casualDifficulty" value="medium" checked><span><b>進階</b><small>平衡攻守</small></span></label><label><input type="radio" name="casualDifficulty" value="hard"><span><b>困難</b><small>較深策略</small></span></label></div></fieldset><fieldset id="casualSpeedFieldset" hidden><legend>方塊速度</legend><div class="choice-grid speed-grid"><label><input type="radio" name="casualSpeed" value="slow"><span><b>悠閒</b><small>850 ms</small></span></label><label><input type="radio" name="casualSpeed" value="normal" checked><span><b>標準</b><small>560 ms</small></span></label><label><input type="radio" name="casualSpeed" value="fast"><span><b>快速</b><small>310 ms</small></span></label><label><input type="radio" name="casualSpeed" value="extreme"><span><b>極速</b><small>150 ms</small></span></label></div></fieldset><button id="startCasual" class="primary-button full" type="button">開始遊戲 →</button></form>
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><h2 id="casualSetupTitle">遊戲設定</h2><p id="casualSetupDescription"></p><fieldset><legend>參加人數</legend><div id="casualPlayerOptions" class="choice-grid series-grid"></div></fieldset><fieldset id="casualArcadeModeFieldset" hidden><legend>遊戲模式</legend><div id="casualArcadeModeOptions" class="choice-grid difficulty-grid"></div></fieldset><fieldset id="casualDifficultyFieldset"><legend>AI 難度</legend><div class="choice-grid difficulty-grid"><label><input type="radio" name="casualDifficulty" value="easy"><span><b>初級</b><small>適合熟悉規則</small></span></label><label><input type="radio" name="casualDifficulty" value="medium" checked><span><b>進階</b><small>平衡攻守</small></span></label><label><input type="radio" name="casualDifficulty" value="hard"><span><b>困難</b><small>較深策略</small></span></label></div></fieldset><fieldset id="casualSpeedFieldset" hidden><legend>方塊速度</legend><div class="choice-grid speed-grid"><label><input type="radio" name="casualSpeed" value="slow"><span><b>悠閒</b><small>850 ms</small></span></label><label><input type="radio" name="casualSpeed" value="normal" checked><span><b>標準</b><small>560 ms</small></span></label><label><input type="radio" name="casualSpeed" value="fast"><span><b>快速</b><small>310 ms</small></span></label><label><input type="radio" name="casualSpeed" value="extreme"><span><b>極速</b><small>150 ms</small></span></label></div></fieldset><button id="startCasual" class="primary-button full" type="button">開始遊戲 →</button></form>
     </dialog>
 
     <dialog id="roomWaitingDialog" class="modal room-waiting-modal">
@@ -309,7 +314,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-10"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-10"></script>
+    <script type="module" src="./src/app.js?v=neighbor-11"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-11"></script>
   </body>
 </html>

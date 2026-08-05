@@ -1,5 +1,8 @@
 import { ARCADE_HEIGHT, ARCADE_WIDTH } from "./arcade-games.js?v=neighbor-8";
 
+const brickBreakerBackground = new Image();
+brickBreakerBackground.src = new URL("../assets/brickbreaker-arcade-room.png", import.meta.url).href;
+
 function pixelText(ctx, text, x, y, size = 22, align = "left", color = "#fff") {
   ctx.save(); ctx.font = `700 ${size}px monospace`; ctx.textAlign = align; ctx.textBaseline = "middle";
   ctx.fillStyle = "rgba(30,24,17,.55)"; ctx.fillText(text, x + 2, y + 2); ctx.fillStyle = color; ctx.fillText(text, x, y); ctx.restore();
@@ -85,4 +88,79 @@ export function drawRacing(canvas, game) {
   pixelText(ctx, `P2  ${game.players[1].score}`, 774, 35, 19, "right", "#ff8275"); pixelText(ctx, `❤ ${game.players[1].lives}`, 774, 59, 15, "right", "#fff");
   pixelText(ctx, `${Math.floor(game.distance)} m`, 400, 34, 24, "center", "#ffe267");
   if (game.winner !== null) { ctx.fillStyle = "rgba(18,24,26,.78)"; ctx.fillRect(195, 185, 410, 120); pixelText(ctx, game.winner === -1 ? "平手！" : `玩家 ${game.winner + 1} 獲勝`, 400, 229, 34, "center", "#ffe267"); pixelText(ctx, "避開障礙，再跑一局", 400, 271, 15, "center", "#fff"); }
+}
+
+const POWER_LABELS = { long: "長", slow: "慢", multi: "3", fire: "火", shield: "盾", heal: "+" };
+
+function drawBrickBackground(ctx) {
+  if (brickBreakerBackground.complete && brickBreakerBackground.naturalWidth) {
+    const sourceHeight = brickBreakerBackground.naturalWidth / (ARCADE_WIDTH / ARCADE_HEIGHT);
+    const sourceY = Math.max(0, (brickBreakerBackground.naturalHeight - sourceHeight) / 2);
+    ctx.drawImage(brickBreakerBackground, 0, sourceY, brickBreakerBackground.naturalWidth, sourceHeight, 0, 0, ARCADE_WIDTH, ARCADE_HEIGHT);
+  } else {
+    ctx.fillStyle = "#07152b"; ctx.fillRect(0, 0, ARCADE_WIDTH, ARCADE_HEIGHT);
+  }
+  ctx.fillStyle = "rgba(2,10,24,.22)"; ctx.fillRect(0, 0, ARCADE_WIDTH, ARCADE_HEIGHT);
+}
+
+function drawBrickPaddle(ctx, paddle, label) {
+  const x = Math.round(paddle.x - paddle.width / 2), y = Math.round(paddle.y - paddle.height / 2);
+  ctx.fillStyle = "#18233a"; ctx.fillRect(x - 4, y - 4, paddle.width + 8, paddle.height + 8);
+  ctx.fillStyle = paddle.color; ctx.fillRect(x, y, paddle.width, paddle.height);
+  ctx.fillStyle = "rgba(255,255,255,.72)"; ctx.fillRect(x + 8, y + 3, Math.max(8, paddle.width - 16), 3);
+  pixelText(ctx, label, paddle.x, y - 14, 14, "center", paddle.color === "#d94a3c" ? "#ff8377" : "#75a9ff");
+  if (paddle.shield) { ctx.strokeStyle = "#7ee6dc"; ctx.lineWidth = 3; ctx.strokeRect(x - 9, y - 12, paddle.width + 18, paddle.height + 20); }
+}
+
+function drawBrickWorld(ctx, world, game) {
+  if (game.mode === "versus") { ctx.strokeStyle = "rgba(246,236,207,.42)"; ctx.lineWidth = 2; ctx.strokeRect(world.offsetX + 7, 70, world.width - 14, 410); }
+  world.bricks.forEach((brick) => {
+    ctx.fillStyle = "#111a28"; ctx.fillRect(brick.x - 2, brick.y - 2, brick.width + 4, brick.height + 4);
+    ctx.fillStyle = brick.hp < brick.maxHp ? "#8a8f93" : brick.color; ctx.fillRect(brick.x, brick.y, brick.width, brick.height);
+    ctx.fillStyle = "rgba(255,255,255,.34)"; ctx.fillRect(brick.x + 3, brick.y + 3, brick.width - 6, 3);
+    if (brick.power) pixelText(ctx, POWER_LABELS[brick.power], brick.x + brick.width / 2, brick.y + brick.height / 2 + 1, 12, "center", "#fff5b8");
+  });
+  if (world.boss) {
+    const boss = world.boss;
+    ctx.fillStyle = "#141824"; ctx.fillRect(boss.x - 6, boss.y - 6, boss.width + 12, boss.height + 12);
+    ctx.fillStyle = boss.color; ctx.fillRect(boss.x, boss.y, boss.width, boss.height);
+    ctx.fillStyle = "#f0c34c"; ctx.fillRect(boss.x + 18, boss.y + 17, 24, 19); ctx.fillRect(boss.x + boss.width - 42, boss.y + 17, 24, 19);
+    ctx.fillStyle = "#2a1b1a"; ctx.fillRect(boss.x + boss.width * .28, boss.y + 48, boss.width * .44, 10);
+    ctx.fillStyle = "#251f1f"; ctx.fillRect(boss.x, boss.y - 18, boss.width, 9);
+    ctx.fillStyle = "#e24b43"; ctx.fillRect(boss.x, boss.y - 18, boss.width * (boss.hp / boss.maxHp), 9);
+    pixelText(ctx, "隔壁大魔磚", boss.x + boss.width / 2, boss.y + 38, 19, "center", "#fff1c4");
+  }
+  world.drops.forEach((drop) => {
+    ctx.fillStyle = "#e8f4d8"; ctx.fillRect(drop.x - 12, drop.y - 12, 24, 24);
+    ctx.strokeStyle = "#315b49"; ctx.lineWidth = 3; ctx.strokeRect(drop.x - 12, drop.y - 12, 24, 24);
+    pixelText(ctx, POWER_LABELS[drop.type], drop.x, drop.y + 1, 13, "center", "#315b49");
+  });
+  world.balls.forEach((ball) => {
+    ctx.fillStyle = ball.fireFrames > 0 ? "#ff733e" : "#fff6dd";
+    ctx.beginPath(); ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = ball.fireFrames > 0 ? "#ffe05c" : "#293044"; ctx.lineWidth = 2; ctx.stroke();
+    if (ball.fireFrames > 0) { ctx.fillStyle = "rgba(255,111,55,.5)"; ctx.fillRect(ball.x - ball.vx * 3, ball.y - ball.vy * 3, 8, 8); }
+  });
+}
+
+export function drawBrickBreaker(canvas, game) {
+  const ctx = canvas.getContext("2d"); ctx.imageSmoothingEnabled = false; ctx.clearRect(0, 0, ARCADE_WIDTH, ARCADE_HEIGHT);
+  drawBrickBackground(ctx);
+  ctx.fillStyle = "rgba(3,11,28,.9)"; ctx.fillRect(0, 0, ARCADE_WIDTH, 65);
+  pixelText(ctx, game.stageLabel, 28, 25, 17, "left", "#ffe15f");
+  pixelText(ctx, `分數 ${String(game.score).padStart(6, "0")}`, 255, 25, 16, "center", "#fff2d2");
+  pixelText(ctx, `COMBO x${String(game.combo).padStart(2, "0")}`, 480, 25, 16, "center", "#77db72");
+  const lives = game.mode === "versus" ? `P1 ${game.players[0].lives}  P2 ${game.players[1].lives}` : `生命 ${"♥".repeat(Math.max(0, game.lives))}`;
+  pixelText(ctx, lives, 772, 25, 17, "right", "#ff7165");
+  game.worlds.forEach((world) => drawBrickWorld(ctx, world, game));
+  if (game.mode === "classic") drawBrickPaddle(ctx, game.players[0], "P1");
+  else { drawBrickPaddle(ctx, game.players[0], "P1"); drawBrickPaddle(ctx, game.players[1], "P2"); }
+  if (game.mode === "versus") { ctx.fillStyle = "rgba(248,238,210,.72)"; ctx.fillRect(398, 66, 4, 434); }
+  if (game.event && game.frame - game.event.frame < 150) pixelText(ctx, game.message, 400, 300, 24, "center", "#fff3a5");
+  if (game.winner !== null) {
+    ctx.fillStyle = "rgba(5,10,20,.82)"; ctx.fillRect(185, 188, 430, 120);
+    const message = game.winner === -1 ? (game.mode === "versus" ? "雙方平手！" : "生命用盡") : `玩家 ${game.winner + 1} 獲勝`;
+    pixelText(ctx, message, 400, 229, 34, "center", "#ffe267");
+    pixelText(ctx, "按重新開始再挑戰一次", 400, 275, 15, "center", "#fff");
+  }
 }

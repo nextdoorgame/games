@@ -8,7 +8,8 @@ import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=nei
 import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
 import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
 import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-8";
-import { drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-8";
+import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-9";
+import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from "./brick-breaker.js?v=neighbor-1";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 
 const GAMES = {
@@ -26,7 +27,8 @@ const GAMES = {
   ninetynine: { name: "九九", players: [3, 4, 5], mode: "99 點淘汰" },
   tetris: { name: "俄羅斯方塊", players: [2], mode: "雙人同步分屏" },
   volleyball: { name: "皮卡丘排球", players: [2], mode: "像素沙灘對戰" },
-  racing: { name: "賽車障礙", players: [2], mode: "雙車障礙競速" }
+  racing: { name: "賽車障礙", players: [2], mode: "雙車障礙競速" },
+  brickbreaker: { name: "隔壁打磚塊", players: [2], mode: "單人闖關・雙人合作／對戰" }
 };
 
 const GAME_RULES = {
@@ -44,7 +46,8 @@ const GAME_RULES = {
   ninetynine: { summary: "輪流出牌累加點數，總數不能超過 99。", steps: ["每回合打出一張牌並依牌面效果調整總點數。", "部分牌可指定加減或改變出牌方向。", "無法合法出牌或使總數超過 99 的玩家淘汰，最後存活者獲勝。"] },
   tetris: { summary: "移動與旋轉方塊，完成橫列來消除得分。", steps: ["方向鍵左右移動，↑ 旋轉，↓ 軟降，空白鍵硬降。", "填滿完整橫列後該列會消除並增加分數。", "方塊堆到棋盤頂端即結束；雙人房可同步查看對手進度。"] },
   volleyball: { summary: "移動、跳躍與有角度的殺球，率先得到 7 分。", steps: ["每球開始前倒數 3 秒，球會放在發球玩家頭頂。", "空中按攻擊鍵殺球；搭配前方是平殺、↓ 是直下殺、前方＋↓ 是強力斜下殺。", "搭配 ↑ 可打斜上高球、搭配後方可反向殺球；讓球落在對方場地即可得分。"] },
-  racing: { summary: "避開障礙並保留耐久，跑出更高分數。", steps: ["使用方向鍵控制車輛左右與加減速。", "撞上三角錐、油漬或路障會損失耐久與分數。", "抵達終點或有人耐久歸零時，以耐久與分數判定勝負。"] }
+  racing: { summary: "避開障礙並保留耐久，跑出更高分數。", steps: ["使用方向鍵控制車輛左右與加減速。", "撞上三角錐、油漬或路障會損失耐久與分數。", "抵達終點或有人耐久歸零時，以耐久與分數判定勝負。"] },
+  brickbreaker: { summary: "隔壁家特有的闖關打磚塊，支援單人、雙板合作與左右對戰。", steps: ["單人經典共有三條生命、Combo、掉落道具、多關卡、三星評價與每三關一次的 Boss 戰。", "雙板合作時 P1 使用方向鍵、P2 使用 A／D，共用生命並可互相救球。", "左右對戰各自清除半場磚塊，先清空或讓對手生命歸零者獲勝；房間模式可在兩台裝置同步遊玩。", "首版道具包含加長、緩速、三球、火焰穿透、護盾與補血；後續可加入角色專屬技能。", "後續擴充依序規劃 Boss 合作、生存、派對、接力與每日挑戰，再接上金幣、角色、球與板子外觀解鎖。"] }
 };
 
 const tabs = document.querySelector("#roomGameTabs");
@@ -84,14 +87,20 @@ const primary = document.querySelector("#casualPrimaryAction");
 const pass = document.querySelector("#casualPass");
 const difficultyFieldset = document.querySelector("#casualDifficultyFieldset");
 const speedFieldset = document.querySelector("#casualSpeedFieldset");
-let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, selected = new Set();
+const arcadeModeFieldset = document.querySelector("#casualArcadeModeFieldset");
+const arcadeModeOptions = document.querySelector("#casualArcadeModeOptions");
+let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, tableSyncTimer = null, selected = new Set();
 let enteringOnlineGameId = null;
 let arcadeSyncInFlight = false;
+let tableSyncInFlight = false;
+let tablePendingCommit = null;
+let tableAiQueuedKey = null;
 let roomWaitingTimer = null;
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
 const ROOM_API = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
 const roomPlayerName = () => localStorage.getItem("gomoku-player-name") || "隔壁棋手";
+const ONLINE_TABLE_GAMES = new Set(["checkers", "mahjong", "bigtwo", "blackjack", "pickred", "ninetynine"]);
 
 window.addEventListener("neighbor-online-players", (event) => {
   const players = Array.isArray(event.detail) ? event.detail : [];
@@ -306,32 +315,114 @@ function openCasualSetup(game) {
   pendingGame = game; const meta = GAMES[game]; setupTitle.textContent = `設定${meta.name}遊戲`;
   const descriptions = {
     reversi: "你執黑先手，依難度挑戰 AI。", checkers: "選擇 2 或 3 人桌，其餘座位由 AI 補齊。", mahjong: "選擇真人玩家數，未坐滿的四方座位由 AI 補位。", bigtwo: "選擇 3～5 人牌局，其餘對手由 AI 補位。",
-    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。"
+    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。", brickbreaker: pendingRoom ? "選擇雙板合作或左右對戰，房內兩位玩家會即時同步操作。" : "單人可闖關、收集道具並挑戰 Boss；雙人可選合作或左右對戰。"
   };
   setupDescription.textContent = descriptions[game] || "選擇遊戲人數與 AI 難度。";
-  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing"].includes(game);
+  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing", "brickbreaker"].includes(game);
   speedFieldset.hidden = game !== "tetris";
-  const options = pendingRoom ? [pendingRoom.maxPlayers] : game === "tetris" ? [1] : ["volleyball", "racing"].includes(game) ? [1, 2] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
+  arcadeModeFieldset.hidden = game !== "brickbreaker";
+  const options = pendingRoom ? [pendingRoom.maxPlayers] : game === "tetris" ? [1] : ["volleyball", "racing", "brickbreaker"].includes(game) ? [1, 2] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
   playerOptions.replaceChildren(...options.map((count, index) => {
     const label = document.createElement("label");
-    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["volleyball", "racing"].includes(game) ? (pendingRoom ? "2 人連線對戰" : count === 1 ? "單人＋AI" : "本機雙人") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
+    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["volleyball", "racing"].includes(game) ? (pendingRoom ? "2 人連線對戰" : count === 1 ? "單人＋AI" : "本機雙人") : game === "brickbreaker" ? (pendingRoom ? "2 人連線" : count === 1 ? "單人闖關" : "本機雙人") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
     const humanCount = pendingRoom?.players?.length || (game === "mahjong" ? count : 1), aiCount = pendingRoom?.aiFill ? Math.max(0, count - humanCount) : 0;
-    const detail = pendingRoom ? `${humanCount} 位真人${aiCount ? ` ＋ ${aiCount} 位 AI` : ""}` : game === "tetris" ? "練習消行與速度控制" : ["volleyball", "racing"].includes(game) ? (count === 1 ? "AI 會自動移動與進攻" : "玩家 2 使用 W／A／S／D") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
+    const detail = pendingRoom ? `${humanCount} 位真人${aiCount ? ` ＋ ${aiCount} 位 AI` : ""}` : game === "tetris" ? "練習消行與速度控制" : ["volleyball", "racing"].includes(game) ? (count === 1 ? "AI 會自動移動與進攻" : "玩家 2 使用 W／A／S／D") : game === "brickbreaker" ? (count === 1 ? "三條生命・道具・Boss" : "P1 方向鍵・P2 A／D") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
     label.innerHTML = `<input type="radio" name="casualPlayers" value="${count}" ${index === 0 ? "checked" : ""}><span><b>${title}</b><small>${detail}</small></span>`;
     return label;
   }));
+  if (game === "brickbreaker") renderBrickBreakerModeOptions(Number(playerOptions.querySelector("input:checked")?.value) || 1);
   setup.showModal();
 }
+function renderBrickBreakerModeOptions(players) {
+  const modes = players === 1 ? [["classic", "單人經典", "闖關、道具、三星與 Boss 戰"]] : [["coop", "雙板合作", "共同救球並共用三條生命"], ["versus", "左右對戰", "先清空自己的磚塊即可獲勝"]];
+  arcadeModeOptions.replaceChildren(...modes.map(([value, title, detail], index) => {
+    const label = document.createElement("label");
+    label.innerHTML = `<input type="radio" name="casualArcadeMode" value="${value}" ${index === 0 ? "checked" : ""}><span><b>${title}</b><small>${detail}</small></span>`;
+    return label;
+  }));
+}
+playerOptions.addEventListener("change", () => { if (pendingGame === "brickbreaker") renderBrickBreakerModeOptions(Number(playerOptions.querySelector("input:checked")?.value) || 1); });
 document.querySelectorAll(".casual-solo-button").forEach((button) => button.addEventListener("click", () => { pendingRoom = null; openCasualSetup(button.dataset.gameType); }));
-document.querySelector("#startCasual").addEventListener("click", () => { const form = new FormData(setup.querySelector("form")); setup.close(); startGame(pendingGame, Number(form.get("casualPlayers")) || 1, form.get("casualDifficulty") || "medium", form.get("casualSpeed") || "normal", pendingRoom); });
+document.querySelector("#startCasual").addEventListener("click", () => { const form = new FormData(setup.querySelector("form")); setup.close(); startGame(pendingGame, Number(form.get("casualPlayers")) || 1, form.get("casualDifficulty") || "medium", form.get("casualSpeed") || "normal", pendingRoom, form.get("casualArcadeMode") || "classic"); });
 
 function setPlayers(items, active) {
   playersEl.replaceChildren(...items.map((item, index) => { const row = document.createElement("div"); row.className = `casual-player${index === active ? " active" : ""}`; row.style.setProperty("--player-color", item.color || "#777"); row.innerHTML = "<b></b><span></span>"; row.querySelector("b").textContent = item.name; row.querySelector("span").textContent = item.detail || ""; return row; }));
 }
-function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; arcadeFrame = null; }
-function startGame(game, players, difficulty, speed = "normal", room = null) {
-  clearTimeout(aiTimer); stopGameLoops(); selected.clear(); state = { game, players, difficulty, speed, room }; showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
-  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(players), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room) })[game]?.();
+function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; arcadeFrame = null; }
+function startGame(game, players, difficulty, speed = "normal", room = null, arcadeMode = "classic") {
+  clearTimeout(aiTimer); stopGameLoops(); selected.clear(); tableAiQueuedKey = null;
+  const localSeat = room ? Math.max(0, room.players.findIndex((player) => player.id === roomPlayerId)) : 0;
+  state = { game, players, difficulty, speed, room, arcadeMode, localSeat, humanSeats: room?.players?.length || 1, roomRevision: 0, roomReady: !room };
+  showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
+  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(room ? room.players.length : players, room ? room.maxPlayers : 4), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room), brickbreaker: () => startArcadeGame("brickbreaker", players, room, arcadeMode) })[game]?.();
+  if (room && ONLINE_TABLE_GAMES.has(game)) startTableRoomSync();
+}
+
+function tableSeatName(index, short = false) {
+  const human = state?.room?.players?.[index];
+  if (human) return human.id === roomPlayerId ? (short ? "你" : `${human.name}（你）`) : human.name;
+  return `AI ${index - (state?.humanSeats || 1) + 1}`;
+}
+function isHumanTableSeat(index) { return index >= 0 && index < (state?.humanSeats || 1); }
+function canControlTableSeat(index = state?.turn) { return state?.room ? state.roomReady && index === state.localSeat && isHumanTableSeat(index) : index === 0; }
+function canRunTableAi(index = state?.turn) { return !isHumanTableSeat(index) && (!state?.room || state.localSeat === 0); }
+function tableSnapshot() {
+  const snapshot = structuredClone(state);
+  delete snapshot.room; delete snapshot.roomRevision; delete snapshot.roomReady; delete snapshot.localSeat; delete snapshot.humanSeats; delete snapshot.syncWarningShown;
+  return snapshot;
+}
+function renderTableGame() {
+  ({ checkers: renderCheckers, mahjong: renderMahjong, bigtwo: renderBigTwo, blackjack: renderBlackjack, pickred: renderPickRed, ninetynine: renderNinetyNine })[state?.game]?.();
+}
+function queueTableAi(fn, delay = 420) {
+  if (!canRunTableAi()) return;
+  const key = `${state.game}:${state.roomRevision || 0}:${state.turn}`;
+  if (tableAiQueuedKey === key) return;
+  tableAiQueuedKey = key;
+  schedule(() => { tableAiQueuedKey = null; if (canRunTableAi()) fn(); }, delay);
+}
+async function syncTableRoom({ commit = false, initialize = false } = {}) {
+  if (!state?.room || !ONLINE_TABLE_GAMES.has(state.game) || !ROOM_API) return;
+  if (tableSyncInFlight) { if (commit) tablePendingCommit = { commit: true, initialize }; return; }
+  tableSyncInFlight = true;
+  const expectedGame = state.game, roomId = state.room.id;
+  try {
+    const payload = { playerId: roomPlayerId, revision: state.roomRevision || 0 };
+    if (commit) { payload.state = tableSnapshot(); payload.initialize = initialize; }
+    const data = await roomRequest(`/api/rooms/${roomId}/table`, { method: "POST", body: JSON.stringify(payload) });
+    if (state?.game !== expectedGame || state.room?.id !== roomId) return;
+    const shouldApply = data.state && (!state.roomReady || data.revision > (state.roomRevision || 0));
+    const preserved = { room: data.room, localSeat: state.localSeat, humanSeats: data.room.players.length, difficulty: state.difficulty, speed: state.speed, arcadeMode: state.arcadeMode };
+    if (shouldApply) {
+      state = { ...data.state, ...preserved, roomRevision: data.revision, roomReady: true };
+      selected.clear(); tableAiQueuedKey = null; renderTableGame(); maybeRunTableAi();
+    } else {
+      state.room = data.room; state.humanSeats = data.room.players.length; state.roomRevision = data.revision; state.roomReady = Boolean(data.state);
+    }
+    state.syncWarningShown = false;
+  } catch (error) {
+    if (!state?.syncWarningShown) { state.syncWarningShown = true; toast(`多人牌局同步暫停：${error.message}`); }
+  } finally {
+    tableSyncInFlight = false;
+    if (tablePendingCommit) { const pending = tablePendingCommit; tablePendingCommit = null; syncTableRoom(pending); }
+  }
+}
+function commitTableState() { if (state?.room) syncTableRoom({ commit: true }); }
+function maybeRunTableAi() {
+  if (!state || (state.game === "checkers" ? Boolean(state.winner) : state.winner !== null && state.winner !== undefined)) return;
+  if (state.game === "checkers") queueTableAi(aiChecker);
+  else if (state.game === "mahjong") queueTableAi(aiMahjongTurn, 430);
+  else if (state.game === "bigtwo") queueTableAi(aiBigTwo, 500);
+  else if (state.game === "blackjack" && state.phase === "players") queueTableAi(aiBlackjackTurn, 420);
+  else if (state.game === "pickred") queueTableAi(aiPickRed, 420);
+  else if (state.game === "ninetynine") queueTableAi(aiNinetyNine, 420);
+}
+function startTableRoomSync() {
+  state.roomReady = false;
+  tablePendingCommit = null;
+  if (state.localSeat === 0) syncTableRoom({ commit: true, initialize: true });
+  else syncTableRoom();
+  tableSyncTimer = setInterval(syncTableRoom, 550);
 }
 
 function startReversi() { state = { ...state, board: createReversiBoard(), turn: DARK, finished: false }; rulesEl.textContent = "8×8 棋盤，夾住對方棋子即可翻面；雙方都無合法位置時，以棋子較多者獲勝。"; renderReversi(); }
@@ -348,10 +439,13 @@ function startCheckers(total) { state = { ...state, total, board: createCheckers
 function renderCheckers() {
   boardEl.innerHTML = '<div class="checker-board"></div>'; const surface = boardEl.firstElementChild;
   CHECKER_HOLES.forEach((hole) => { const button = document.createElement("button"); button.type = "button"; button.className = `checker-hole${state.selected === hole.key ? " selected" : ""}${state.legal.includes(hole.key) ? " legal" : ""}`; button.style.left = `${50 + (hole.q + hole.r / 2) * 4.7}%`; button.style.top = `${50 + hole.r * 4.45}%`; const owner = state.board[hole.key]; button.ariaLabel = owner ? `玩家 ${owner} 的跳棋，位置 ${hole.key}` : `空位 ${hole.key}`; if (owner) { const piece = document.createElement("i"); piece.className = `checker-piece ${CHECKER_COLORS[owner - 1]}`; button.append(piece); } button.addEventListener("click", () => clickChecker(hole.key)); surface.append(button); });
-  setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: i === 0 ? "你" : `AI ${i}`, detail: `${Object.values(state.board).filter((x) => x === i + 1).length} 棋`, color: ["#b94136", "#315b88", "#d5a72d"][i] })), state.turn); turnEl.textContent = state.winner ? "本局結束" : state.turn === 0 ? "輪到你了" : `AI ${state.turn} 思考`; statusEl.textContent = state.winner ? `${state.winner === 1 ? "你" : `AI ${state.winner - 1}`} 完成換位，獲得勝利！` : state.turn === 0 ? "選擇自己的棋子，再選擇綠色目標。" : "AI 正在規劃連跳路線。";
+  setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: state.room ? tableSeatName(i) : i === 0 ? "你" : `AI ${i}`, detail: `${Object.values(state.board).filter((x) => x === i + 1).length} 棋`, color: ["#b94136", "#315b88", "#d5a72d"][i] })), state.turn);
+  const turnName = state.room ? tableSeatName(state.turn, true) : state.turn === 0 ? "你" : `AI ${state.turn}`;
+  turnEl.textContent = state.winner ? "本局結束" : canControlTableSeat() ? "輪到你了" : `${turnName} 思考`;
+  statusEl.textContent = state.winner ? `${state.room ? tableSeatName(state.winner - 1, true) : state.winner === 1 ? "你" : `AI ${state.winner - 1}`} 完成換位，獲得勝利！` : canControlTableSeat() ? "選擇自己的棋子，再選擇綠色目標。" : `等待 ${turnName} 完成這一步。`;
 }
-function clickChecker(key) { if (state.winner || state.turn !== 0) return; if (state.legal.includes(key)) { state.board = applyCheckerMove(state.board, state.selected, key); state.selected = null; state.legal = []; finishCheckerTurn(); return; } if (state.board[key] === 1) { state.selected = key; state.legal = checkerMoves(state.board, key); } else { state.selected = null; state.legal = []; } renderCheckers(); }
-function finishCheckerTurn() { state.winner = checkersWinner(state.board, state.total); if (!state.winner) state.turn = (state.turn + 1) % state.total; renderCheckers(); if (!state.winner && state.turn !== 0) schedule(aiChecker, 420); }
+function clickChecker(key) { if (state.winner || !canControlTableSeat()) return; if (state.legal.includes(key)) { state.board = applyCheckerMove(state.board, state.selected, key); state.selected = null; state.legal = []; finishCheckerTurn(); return; } if (state.board[key] === state.turn + 1) { state.selected = key; state.legal = checkerMoves(state.board, key); } else { state.selected = null; state.legal = []; } renderCheckers(); }
+function finishCheckerTurn() { state.winner = checkersWinner(state.board, state.total); if (!state.winner) state.turn = (state.turn + 1) % state.total; renderCheckers(); commitTableState(); if (!state.winner) queueTableAi(aiChecker, 420); }
 function aiChecker() { const move = chooseCheckerMove(state.board, state.turn); if (move) state.board = applyCheckerMove(state.board, move.from, move.to); finishCheckerTurn(); }
 
 function startBanqi() { state = { ...state, ...createBanqiState(), selected: null, legal: [] }; rulesEl.textContent = "4×8 棋盤，第一枚翻棋決定陣營；一般棋子走一格，炮隔一枚棋子吃子，兵可吃將而將不能吃兵。"; renderBanqi(); }
@@ -383,37 +477,40 @@ function playGo(index) { if (state.turn !== 1 || state.winner) return; const nex
 function aiGo() { if (state.winner) return; const move = chooseGoMove(state, state.difficulty); state = { ...applyGoMove(state, move), game: "go", difficulty: state.difficulty }; renderGo(); }
 function passGo() { if (state.turn !== 1 || state.winner) return; state = { ...applyGoMove(state, null), game: "go", difficulty: state.difficulty }; renderGo(); if (!state.winner) schedule(aiGo); }
 
-function startMahjong(humans) { state = { ...state, ...dealMahjong(4), humans }; rulesEl.textContent = "家庭自摸版：使用 136 張牌，每家 13 張，湊成四組順子／刻子加一對將即可胡牌；本版不含花牌與搶碰吃。"; primary.hidden = false; primary.textContent = "自摸檢查"; renderMahjong(); }
-function renderMahjong() { const current = state.turn; boardEl.innerHTML = '<div class="mahjong-table"><div class="mahjong-opponents"></div><div class="mahjong-discards"><div class="wall-count"></div></div><div class="mahjong-hand"></div></div>'; const seats = boardEl.querySelector(".mahjong-opponents"); for (let i = 1; i < 4; i += 1) { const seat = document.createElement("div"); seat.className = "mahjong-seat"; seat.textContent = `${i < state.humans ? `玩家 ${i + 1}` : `AI ${i}`}・${state.hands[i].length} 張`; seats.append(seat); } const discardArea = boardEl.querySelector(".mahjong-discards"); discardArea.querySelector(".wall-count").textContent = `牌牆剩餘 ${state.wall.length} 張`; state.discards.flat().slice(-28).forEach((tile) => discardArea.append(tileButton(tile, false))); const hand = boardEl.querySelector(".mahjong-hand"); const showHand = current < state.humans ? state.hands[current] : state.hands[0]; showHand.forEach((tile, index) => { const button = tileButton(tile, true); button.addEventListener("click", () => humanMahjongDiscard(index)); hand.append(button); }); setPlayers(Array.from({ length: 4 }, (_, i) => ({ name: i < state.humans ? `玩家 ${i + 1}` : `AI ${i - state.humans + 1}`, detail: `${state.hands[i].length} 張`, color: ["#b94136", "#315b88", "#d5a72d", "#315b49"][i] })), current); turnEl.textContent = state.winner !== null ? "本局結束" : current < state.humans ? `玩家 ${current + 1} 出牌` : `AI ${current - state.humans + 1} 思考`; statusEl.textContent = state.winner !== null ? `${state.winner < state.humans ? `玩家 ${state.winner + 1}` : `AI ${state.winner - state.humans + 1}`} 自摸胡牌！` : current < state.humans ? "選擇一張牌打出。" : "AI 正在整理牌型。"; }
+function startMahjong(humans, total = 4) { state = { ...state, ...dealMahjong(total), humans, total, humanSeats: state.room ? state.humanSeats : humans }; rulesEl.textContent = "家庭自摸版：使用 136 張牌，每家 13 張，湊成四組順子／刻子加一對將即可胡牌；本版不含花牌與搶碰吃。"; primary.hidden = false; primary.textContent = "自摸檢查"; renderMahjong(); }
+function canControlMahjongSeat() { return state.room ? canControlTableSeat() : state.turn < state.humans; }
+function renderMahjong() { const current = state.turn, local = state.room ? state.localSeat : current < state.humans ? current : 0; boardEl.innerHTML = '<div class="mahjong-table"><div class="mahjong-opponents"></div><div class="mahjong-discards"><div class="wall-count"></div></div><div class="mahjong-hand"></div></div>'; const seats = boardEl.querySelector(".mahjong-opponents"); for (let i = 0; i < state.total; i += 1) { if (i === local) continue; const seat = document.createElement("div"); seat.className = "mahjong-seat"; seat.textContent = `${state.room ? tableSeatName(i) : i < state.humans ? `玩家 ${i + 1}` : `AI ${i - state.humans + 1}`}・${state.hands[i].length} 張`; seats.append(seat); } const discardArea = boardEl.querySelector(".mahjong-discards"); discardArea.querySelector(".wall-count").textContent = `牌牆剩餘 ${state.wall.length} 張`; state.discards.flat().slice(-28).forEach((tile) => discardArea.append(tileButton(tile, false))); const hand = boardEl.querySelector(".mahjong-hand"); state.hands[local].forEach((tile, index) => { const button = tileButton(tile, true); button.disabled = !canControlMahjongSeat(); button.addEventListener("click", () => humanMahjongDiscard(index)); hand.append(button); }); setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: state.room ? tableSeatName(i) : i < state.humans ? `玩家 ${i + 1}` : `AI ${i - state.humans + 1}`, detail: `${state.hands[i].length} 張`, color: ["#b94136", "#315b88", "#d5a72d", "#315b49"][i] })), current); turnEl.textContent = state.winner !== null ? "本局結束" : canControlMahjongSeat() ? "輪到你出牌" : `${state.room ? tableSeatName(current, true) : current < state.humans ? `玩家 ${current + 1}` : `AI ${current - state.humans + 1}`} 思考`; statusEl.textContent = state.winner !== null ? `${state.room ? tableSeatName(state.winner, true) : state.winner < state.humans ? `玩家 ${state.winner + 1}` : `AI ${state.winner - state.humans + 1}`} 自摸胡牌！` : canControlMahjongSeat() ? "選擇一張牌打出。" : "等待目前座位完成摸打。"; }
 const MAHJONG_HONORS = { 東: 0x1f000, 南: 0x1f001, 西: 0x1f002, 北: 0x1f003, 中: 0x1f004, 發: 0x1f005, 白: 0x1f006 };
 function mahjongGlyph(tile) { const start = tile.suit === "萬" ? 0x1f007 : tile.suit === "條" ? 0x1f010 : tile.suit === "筒" ? 0x1f019 : MAHJONG_HONORS[tile.label]; return String.fromCodePoint(start + (tile.suit === "字" ? 0 : tile.rank - 1)); }
 function tileButton(tile, button) { const el = document.createElement(button ? "button" : "i"); el.className = `mahjong-tile suit-${tile.suit}${tile.suit === "字" ? " honor" : ""}`; const face = document.createElement("span"); face.className = "mahjong-glyph"; face.textContent = mahjongGlyph(tile); const caption = document.createElement("small"); caption.textContent = tile.label; el.append(face, caption); el.ariaLabel = `${tile.label}麻將牌`; return el; }
-function humanMahjongDiscard(index) { if (state.winner !== null || state.turn >= state.humans) return; state = discardMahjong(state, state.turn, index); advanceMahjong(); }
-function advanceMahjong() { if (!state.wall.length) { statusEl.textContent = "牌牆用盡，本局流局。"; return; } state = drawMahjong(state, state.turn); renderMahjong(); if (state.winner !== null) return; if (state.turn >= state.humans) schedule(() => { state = discardMahjong(state, state.turn, chooseMahjongDiscard(state.hands[state.turn])); advanceMahjong(); }, 430); }
+function humanMahjongDiscard(index) { if (state.winner !== null || !canControlMahjongSeat()) return; state = discardMahjong(state, state.turn, index); advanceMahjong(); }
+function advanceMahjong() { if (!state.wall.length) { statusEl.textContent = "牌牆用盡，本局流局。"; commitTableState(); return; } state = drawMahjong(state, state.turn); renderMahjong(); commitTableState(); if (state.winner !== null) return; queueTableAi(aiMahjongTurn, 430); }
+function aiMahjongTurn() { if (!canRunTableAi()) return; state = discardMahjong(state, state.turn, chooseMahjongDiscard(state.hands[state.turn])); advanceMahjong(); }
 
-function startBigTwo(total) { state = { ...state, ...dealBigTwo(total), total }; rulesEl.textContent = "3♦ 首攻；可出單張、對子、三條或五張牌型。五張牌依序為同花順、鐵支、葫蘆、同花、順子；點數 2 最大。"; primary.hidden = false; primary.textContent = "出牌"; pass.hidden = false; pass.textContent = "過牌"; renderBigTwo(); if (state.turn !== 0) schedule(aiBigTwo, 500); }
-function renderBigTwo() { boardEl.innerHTML = '<div class="bigtwo-table"><div class="bigtwo-opponents"></div><div class="bigtwo-center"></div><div class="bigtwo-hand"></div></div>'; const opponents = boardEl.querySelector(".bigtwo-opponents"); for (let i = 1; i < state.total; i += 1) { const el = document.createElement("div"); el.className = "bigtwo-opponent"; el.innerHTML = `AI ${i}<b>${state.hands[i].length}</b>`; opponents.append(el); } const center = boardEl.querySelector(".bigtwo-center"); if (state.lastPlay) { const wrap = document.createElement("div"); wrap.className = "playing-cards"; state.lastPlay.cards.forEach((card) => wrap.append(cardButton(card, false))); center.append(wrap); } else center.textContent = "新一輪，自由出牌"; const hand = boardEl.querySelector(".bigtwo-hand"); state.hands[0].forEach((card) => { const button = cardButton(card, true); button.classList.toggle("selected", selected.has(card.id)); button.addEventListener("click", () => { if (state.turn !== 0) return; selected.has(card.id) ? selected.delete(card.id) : selected.add(card.id); renderBigTwo(); }); hand.append(button); }); setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: i === 0 ? "你" : `AI ${i}`, detail: `${state.hands[i].length} 張`, color: i === 0 ? "#b94136" : "#315b49" })), state.turn); turnEl.textContent = state.winner !== null ? "本局結束" : state.turn === 0 ? "輪到你了" : `AI ${state.turn} 出牌`; statusEl.textContent = state.winner !== null ? `${state.winner === 0 ? "你" : `AI ${state.winner}`} 率先出完手牌！` : state.turn === 0 ? state.lastPlay ? "選牌壓過桌面牌型，或選擇過牌。" : "選擇合法牌型開始新一輪。" : `AI ${state.turn} 正在選牌。`; pass.disabled = state.turn !== 0 || !state.lastPlay || state.leader === 0; primary.disabled = state.turn !== 0; }
+function startBigTwo(total) { state = { ...state, ...dealBigTwo(total), total }; rulesEl.textContent = "3♦ 首攻；可出單張、對子、三條或五張牌型。五張牌依序為同花順、鐵支、葫蘆、同花、順子；點數 2 最大。"; primary.hidden = false; primary.textContent = "出牌"; pass.hidden = false; pass.textContent = "過牌"; renderBigTwo(); queueTableAi(aiBigTwo, 500); }
+function renderBigTwo() { const local = state.room ? state.localSeat : 0; boardEl.innerHTML = '<div class="bigtwo-table"><div class="bigtwo-opponents"></div><div class="bigtwo-center"></div><div class="bigtwo-hand"></div></div>'; const opponents = boardEl.querySelector(".bigtwo-opponents"); for (let i = 0; i < state.total; i += 1) { if (i === local) continue; const el = document.createElement("div"); el.className = "bigtwo-opponent"; const label = document.createTextNode(state.room ? tableSeatName(i) : `AI ${i}`); const count = document.createElement("b"); count.textContent = state.hands[i].length; el.append(label, count); opponents.append(el); } const center = boardEl.querySelector(".bigtwo-center"); if (state.lastPlay) { const wrap = document.createElement("div"); wrap.className = "playing-cards"; state.lastPlay.cards.forEach((card) => wrap.append(cardButton(card, false))); center.append(wrap); } else center.textContent = "新一輪，自由出牌"; const hand = boardEl.querySelector(".bigtwo-hand"); state.hands[local].forEach((card) => { const button = cardButton(card, true); button.classList.toggle("selected", selected.has(card.id)); button.addEventListener("click", () => { if (!canControlTableSeat()) return; selected.has(card.id) ? selected.delete(card.id) : selected.add(card.id); renderBigTwo(); }); hand.append(button); }); setPlayers(Array.from({ length: state.total }, (_, i) => ({ name: state.room ? tableSeatName(i) : i === 0 ? "你" : `AI ${i}`, detail: `${state.hands[i].length} 張`, color: i === local ? "#b94136" : "#315b49" })), state.turn); turnEl.textContent = state.winner !== null ? "本局結束" : canControlTableSeat() ? "輪到你了" : `${state.room ? tableSeatName(state.turn, true) : `AI ${state.turn}`} 出牌`; statusEl.textContent = state.winner !== null ? `${state.room ? tableSeatName(state.winner, true) : state.winner === 0 ? "你" : `AI ${state.winner}`} 率先出完手牌！` : canControlTableSeat() ? state.lastPlay ? "選牌壓過桌面牌型，或選擇過牌。" : "選擇合法牌型開始新一輪。" : `等待 ${state.room ? tableSeatName(state.turn, true) : `AI ${state.turn}`} 出牌。`; pass.disabled = !canControlTableSeat() || !state.lastPlay || state.leader === local; primary.disabled = !canControlTableSeat(); }
 function cardButton(card, button) { const el = document.createElement(button ? "button" : "i"); el.className = `playing-card${["♦", "♥"].includes(card.suit) ? " red" : ""}`; el.textContent = `${card.rank}${card.suit}`; return el; }
-function humanBigTwoPlay() { if (state.game !== "bigtwo" || state.turn !== 0) return; const next = playBigTwo(state, 0, [...selected]); if (next === state) { toast("這組牌型不合法，或無法壓過上一手"); return; } state = next; selected.clear(); renderBigTwo(); if (state.winner === null) schedule(aiBigTwo, 500); }
-function aiBigTwo() { if (state.winner !== null || state.turn === 0) return; const move = chooseBigTwoPlay(state, state.turn); state = move ? playBigTwo(state, state.turn, move) : passBigTwo(state, state.turn); renderBigTwo(); if (state.winner === null && state.turn !== 0) schedule(aiBigTwo, 420); }
+function humanBigTwoPlay() { if (state.game !== "bigtwo" || !canControlTableSeat()) return; const next = playBigTwo(state, state.turn, [...selected]); if (next === state) { toast("這組牌型不合法，或無法壓過上一手"); return; } state = next; selected.clear(); renderBigTwo(); commitTableState(); if (state.winner === null) queueTableAi(aiBigTwo, 500); }
+function aiBigTwo() { if (state.winner !== null || !canRunTableAi()) return; const move = chooseBigTwoPlay(state, state.turn); state = move ? playBigTwo(state, state.turn, move) : passBigTwo(state, state.turn); renderBigTwo(); commitTableState(); if (state.winner === null) queueTableAi(aiBigTwo, 420); }
 
 function startBlackjack(total) { state = { ...state, ...createBlackjackState(total), total }; rulesEl.textContent = "A 可算 1 或 11，J/Q/K 為 10；玩家不爆 21 且高於莊家即勝，莊家 16 以下補牌、17 起停牌。"; primary.hidden = false; primary.textContent = "補牌"; pass.hidden = false; pass.textContent = "停牌"; renderBlackjack(); }
-function renderBlackjack() { boardEl.innerHTML = '<div class="card-table blackjack-table"><div class="dealer-hand"></div><div class="blackjack-seats"></div><div class="player-card-hand"></div></div>'; const dealer = boardEl.querySelector(".dealer-hand"); dealer.append(Object.assign(document.createElement("strong"), { textContent: state.phase === "finished" ? `莊家 ${blackjackScore(state.dealer).total} 點` : "莊家" })); state.dealer.forEach((card,index) => dealer.append(index === 1 && state.phase !== "finished" ? cardBack() : cardButton(card,false))); const seats = boardEl.querySelector(".blackjack-seats"); for (let i=1;i<state.total;i+=1) { const seat=document.createElement("div"); seat.className="card-seat"; seat.textContent=`AI ${i}・${state.phase === "finished" ? blackjackScore(state.hands[i]).total : "?"} 點`; seats.append(seat); } const hand=boardEl.querySelector(".player-card-hand"); state.hands[0].forEach((card)=>hand.append(cardButton(card,false))); setPlayers(Array.from({length:state.total},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:state.phase === "finished"||i===0?`${blackjackScore(state.hands[i]).total} 點`:`${state.hands[i].length} 張`,color:i===0?"#b94136":"#315b49"})),state.phase==="players"?state.turn:-1); turnEl.textContent=state.phase==="finished"?"本局結束":state.turn===0?"輪到你了":state.phase==="dealer"?"莊家補牌":`AI ${state.turn} 決定`; statusEl.textContent=state.phase==="finished"?state.results.map((result,i)=>`${i===0?"你":`AI ${i}`}：${result==="win"?"勝":result==="push"?"和":"負"}`).join("　"):state.turn===0?`目前 ${blackjackScore(state.hands[0]).total} 點，選擇補牌或停牌。`:"其他玩家正在依牌面決定。"; primary.disabled=state.turn!==0||state.phase!=="players"; pass.disabled=state.turn!==0||state.phase!=="players"; }
+function renderBlackjack() { const local=state.room?state.localSeat:0; boardEl.innerHTML = '<div class="card-table blackjack-table"><div class="dealer-hand"></div><div class="blackjack-seats"></div><div class="player-card-hand"></div></div>'; const dealer = boardEl.querySelector(".dealer-hand"); dealer.append(Object.assign(document.createElement("strong"), { textContent: state.phase === "finished" ? `莊家 ${blackjackScore(state.dealer).total} 點` : "莊家" })); state.dealer.forEach((card,index) => dealer.append(index === 1 && state.phase !== "finished" ? cardBack() : cardButton(card,false))); const seats = boardEl.querySelector(".blackjack-seats"); for (let i=0;i<state.total;i+=1) { if(i===local)continue;const seat=document.createElement("div"); seat.className="card-seat"; seat.textContent=`${state.room?tableSeatName(i):`AI ${i}`}・${state.phase === "finished" ? blackjackScore(state.hands[i]).total : "?"} 點`; seats.append(seat); } const hand=boardEl.querySelector(".player-card-hand"); state.hands[local].forEach((card)=>hand.append(cardButton(card,false))); setPlayers(Array.from({length:state.total},(_,i)=>({name:state.room?tableSeatName(i):i===0?"你":`AI ${i}`,detail:state.phase === "finished"||i===local?`${blackjackScore(state.hands[i]).total} 點`:`${state.hands[i].length} 張`,color:i===local?"#b94136":"#315b49"})),state.phase==="players"?state.turn:-1); turnEl.textContent=state.phase==="finished"?"本局結束":state.phase==="dealer"?"莊家補牌":canControlTableSeat()?"輪到你了":`${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 決定`; statusEl.textContent=state.phase==="finished"?state.results.map((result,i)=>`${state.room?tableSeatName(i,true):i===0?"你":`AI ${i}`}：${result==="win"?"勝":result==="push"?"和":"負"}`).join("　"):canControlTableSeat()?`目前 ${blackjackScore(state.hands[local]).total} 點，選擇補牌或停牌。`:"其他玩家正在依牌面決定。"; primary.disabled=!canControlTableSeat()||state.phase!=="players"; pass.disabled=!canControlTableSeat()||state.phase!=="players"; }
 function cardBack(){const el=document.createElement("i");el.className="playing-card card-back";el.textContent="同樂";return el;}
-function humanBlackjackHit(){if(state.game!=="blackjack"||state.turn!==0)return;state=hitBlackjack(state,0);renderBlackjack();if(state.statuses[0]!=="playing")humanBlackjackStand();}
-function humanBlackjackStand(){if(state.game!=="blackjack"||state.turn!==0)return;state=standBlackjack(state,0);renderBlackjack();advanceBlackjack();}
-function advanceBlackjack(){if(state.phase==="dealer"){schedule(()=>{state=settleBlackjack(state);renderBlackjack();},500);return;}if(state.phase==="players"&&state.turn>0)schedule(()=>{state=runBlackjackAiTurn(state);renderBlackjack();advanceBlackjack();},420);}
+function humanBlackjackHit(){if(state.game!=="blackjack"||!canControlTableSeat())return;const seat=state.turn;state=hitBlackjack(state,seat);renderBlackjack();if(state.statuses[seat]!=="playing")humanBlackjackStand();else commitTableState();}
+function humanBlackjackStand(){if(state.game!=="blackjack"||!canControlTableSeat())return;state=standBlackjack(state,state.turn);renderBlackjack();commitTableState();advanceBlackjack();}
+function aiBlackjackTurn(){if(state.phase!=="players"||!canRunTableAi())return;state=runBlackjackAiTurn(state);renderBlackjack();commitTableState();advanceBlackjack();}
+function advanceBlackjack(){if(state.phase==="dealer"){if(!state.room||state.localSeat===0)schedule(()=>{state=settleBlackjack(state);renderBlackjack();commitTableState();},500);return;}queueTableAi(aiBlackjackTurn,420);}
 
 function startPickRed(total){state={...state,...createPickRedState(total),total,pendingCard:null};rulesEl.textContent="打出手牌與桌面數字牌湊成 10 即可吃牌，J/Q/K 必須同字；紅 A 20 分，其餘紅牌依牌面計分，最高分獲勝。";renderPickRed();}
-function renderPickRed(){boardEl.innerHTML='<div class="card-table pickred-table"><div class="pickred-table-cards"></div><div class="player-card-hand"></div></div>';const table=boardEl.querySelector(".pickred-table-cards"),pending=state.pendingCard?state.hands[0].find((card)=>card.id===state.pendingCard):null,matches=pending?pickRedMatches(pending,state.table).map((card)=>card.id):[];state.table.forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("legal",matches.includes(card.id));button.addEventListener("click",()=>{if(matches.includes(card.id))humanPickRed(state.pendingCard,card.id);});table.append(button);});const hand=boardEl.querySelector(".player-card-hand");state.hands[0].forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("selected",state.pendingCard===card.id);button.addEventListener("click",()=>selectPickRed(card.id));hand.append(button);});setPlayers(Array.from({length:state.total},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:`${state.hands[i].length} 張・${state.captures[i].reduce((sum,card)=>sum+pickRedValue(card),0)} 分`,color:i===0?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":state.turn===0?"輪到你了":`AI ${state.turn} 出牌`;statusEl.textContent=state.winner!==null?`${state.winner===0?"你":`AI ${state.winner}`} 以 ${state.scores[state.winner]} 分獲勝！`:state.turn===0?(state.pendingCard?"選擇發亮的桌面牌吃走。":"選擇一張手牌；可湊十時會提示目標。"):`AI ${state.turn} 正在找紅點。`;}
-function selectPickRed(cardId){if(state.turn!==0||state.winner!==null)return;const card=state.hands[0].find((item)=>item.id===cardId),matches=pickRedMatches(card,state.table);if(matches.length<=1)humanPickRed(cardId,matches[0]?.id||null);else{state.pendingCard=cardId;renderPickRed();}}
-function humanPickRed(cardId,targetId){state={...playPickRed(state,0,cardId,targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();if(state.winner===null)schedule(aiPickRed);}
-function aiPickRed(){const move=choosePickRedPlay(state,state.turn);state={...playPickRed(state,state.turn,move.cardId,move.targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();if(state.winner===null&&state.turn!==0)schedule(aiPickRed,350);}
+function renderPickRed(){const local=state.room?state.localSeat:0;boardEl.innerHTML='<div class="card-table pickred-table"><div class="pickred-table-cards"></div><div class="player-card-hand"></div></div>';const table=boardEl.querySelector(".pickred-table-cards"),pending=state.pendingCard?state.hands[local].find((card)=>card.id===state.pendingCard):null,matches=pending?pickRedMatches(pending,state.table).map((card)=>card.id):[];state.table.forEach((card)=>{const button=cardButton(card,true);button.classList.toggle("legal",matches.includes(card.id));button.addEventListener("click",()=>{if(matches.includes(card.id))humanPickRed(state.pendingCard,card.id);});table.append(button);});const hand=boardEl.querySelector(".player-card-hand");state.hands[local].forEach((card)=>{const button=cardButton(card,true);button.disabled=!canControlTableSeat();button.classList.toggle("selected",state.pendingCard===card.id);button.addEventListener("click",()=>selectPickRed(card.id));hand.append(button);});setPlayers(Array.from({length:state.total},(_,i)=>({name:state.room?tableSeatName(i):i===0?"你":`AI ${i}`,detail:`${state.hands[i].length} 張・${state.captures[i].reduce((sum,card)=>sum+pickRedValue(card),0)} 分`,color:i===local?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":canControlTableSeat()?"輪到你了":`${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 出牌`;statusEl.textContent=state.winner!==null?`${state.room?tableSeatName(state.winner,true):state.winner===0?"你":`AI ${state.winner}`} 以 ${state.scores[state.winner]} 分獲勝！`:canControlTableSeat()?(state.pendingCard?"選擇發亮的桌面牌吃走。":"選擇一張手牌；可湊十時會提示目標。"):`等待 ${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 找紅點。`;}
+function selectPickRed(cardId){if(!canControlTableSeat()||state.winner!==null)return;const card=state.hands[state.turn].find((item)=>item.id===cardId),matches=pickRedMatches(card,state.table);if(matches.length<=1)humanPickRed(cardId,matches[0]?.id||null);else{state.pendingCard=cardId;renderPickRed();}}
+function humanPickRed(cardId,targetId){if(!canControlTableSeat())return;state={...playPickRed(state,state.turn,cardId,targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();commitTableState();if(state.winner===null)queueTableAi(aiPickRed);}
+function aiPickRed(){if(!canRunTableAi())return;const move=choosePickRedPlay(state,state.turn);state={...playPickRed(state,state.turn,move.cardId,move.targetId),game:"pickred",difficulty:state.difficulty,total:state.total,pendingCard:null};renderPickRed();commitTableState();if(state.winner===null)queueTableAi(aiPickRed,350);}
 
 function startNinetyNine(total){state={...state,...createNinetyNineState(total),playerCount:total};rulesEl.textContent="輪流出牌且總點數不可超過 99；A 加 1/11、4 反轉、10 加減 10、J 跳過、Q 加 20、K 直接設為 99，無合法牌者淘汰。";primary.hidden=false;primary.textContent="出牌";renderNinetyNine();}
-function renderNinetyNine(){boardEl.innerHTML='<div class="card-table ninetynine-table"><div class="ninety-total"></div><div class="ninety-last"></div><div class="player-card-hand"></div></div>';boardEl.querySelector(".ninety-total").textContent=state.total;const last=boardEl.querySelector(".ninety-last");last.textContent=state.lastPlay?`${state.lastPlay.card.rank}${state.lastPlay.card.suit}`:"尚未出牌";const hand=boardEl.querySelector(".player-card-hand");state.hands[0].forEach((card)=>{const button=cardButton(card,true);const legal=legalNinetyNinePlays(state,0).some((play)=>play.cardId===card.id);button.disabled=!legal||state.turn!==0;button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{selected.clear();selected.add(card.id);renderNinetyNine();});hand.append(button);});setPlayers(Array.from({length:state.hands.length},(_,i)=>({name:i===0?"你":`AI ${i}`,detail:state.alive[i]?`${state.hands[i].length} 張`:"已淘汰",color:i===0?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":state.turn===0?"輪到你了":`AI ${state.turn} 出牌`;statusEl.textContent=state.winner!==null?`${state.winner===0?"你":`AI ${state.winner}`} 成為最後留在牌桌上的玩家！`:state.turn===0?`目前 ${state.total} 點，選擇不超過 99 的牌。`:`AI ${state.turn} 正在控制點數。`;primary.disabled=state.turn!==0||!selected.size;}
-function humanNinetyNine(){if(state.game!=="ninetynine"||state.turn!==0||!selected.size)return;state={...playNinetyNine(state,0,[...selected][0]),game:"ninetynine",difficulty:state.difficulty,totalPlayers:state.total};selected.clear();renderNinetyNine();if(state.winner===null)schedule(aiNinetyNine);}
-function aiNinetyNine(){const move=chooseNinetyNinePlay(state,state.turn);if(move)state={...playNinetyNine(state,state.turn,move.cardId),game:"ninetynine",difficulty:state.difficulty};renderNinetyNine();if(state.winner===null&&state.turn!==0)schedule(aiNinetyNine,350);}
+function renderNinetyNine(){const local=state.room?state.localSeat:0;boardEl.innerHTML='<div class="card-table ninetynine-table"><div class="ninety-total"></div><div class="ninety-last"></div><div class="player-card-hand"></div></div>';boardEl.querySelector(".ninety-total").textContent=state.total;const last=boardEl.querySelector(".ninety-last");last.textContent=state.lastPlay?`${state.lastPlay.card.rank}${state.lastPlay.card.suit}`:"尚未出牌";const hand=boardEl.querySelector(".player-card-hand");state.hands[local].forEach((card)=>{const button=cardButton(card,true);const legal=legalNinetyNinePlays(state,local).some((play)=>play.cardId===card.id);button.disabled=!legal||!canControlTableSeat();button.classList.toggle("selected",selected.has(card.id));button.addEventListener("click",()=>{if(!canControlTableSeat())return;selected.clear();selected.add(card.id);renderNinetyNine();});hand.append(button);});setPlayers(Array.from({length:state.hands.length},(_,i)=>({name:state.room?tableSeatName(i):i===0?"你":`AI ${i}`,detail:state.alive[i]?`${state.hands[i].length} 張`:"已淘汰",color:i===local?"#b94136":"#315b49"})),state.turn);turnEl.textContent=state.winner!==null?"本局結束":canControlTableSeat()?"輪到你了":`${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 出牌`;statusEl.textContent=state.winner!==null?`${state.room?tableSeatName(state.winner,true):state.winner===0?"你":`AI ${state.winner}`} 成為最後留在牌桌上的玩家！`:canControlTableSeat()?`目前 ${state.total} 點，選擇不超過 99 的牌。`:`等待 ${state.room?tableSeatName(state.turn,true):`AI ${state.turn}`} 控制點數。`;primary.disabled=!canControlTableSeat()||!selected.size;}
+function humanNinetyNine(){if(state.game!=="ninetynine"||!canControlTableSeat()||!selected.size)return;state={...playNinetyNine(state,state.turn,[...selected][0]),game:"ninetynine",difficulty:state.difficulty,totalPlayers:state.total};selected.clear();renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine);}
+function aiNinetyNine(){if(!canRunTableAi())return;const move=chooseNinetyNinePlay(state,state.turn);if(move)state={...playNinetyNine(state,state.turn,move.cardId),game:"ninetynine",difficulty:state.difficulty};renderNinetyNine();commitTableState();if(state.winner===null)queueTableAi(aiNinetyNine,350);}
 
 function tetrisCellGrid(board, muted = false) {
   const grid = document.createElement("div");
@@ -501,7 +598,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p") { event.preventDefault(); state.engine.paused = !state.engine.paused; renderTetris(); }
 });
 
-const isArcadeGame = (game) => game === "volleyball" || game === "racing";
+const isArcadeGame = (game) => ["volleyball", "racing", "brickbreaker"].includes(game);
 function arcadeInput(player = 0) {
   if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeTouch.action };
   return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyF || arcadeKeys.Enter };
@@ -510,7 +607,9 @@ function arcadeInput(player = 0) {
 function arcadeCanvasDraw() {
   const canvas = boardEl.querySelector("#arcadeCanvas");
   if (!canvas || !state?.engine) return;
-  if (state.game === "volleyball") drawVolleyball(canvas, state.engine); else drawRacing(canvas, state.engine);
+  if (state.game === "volleyball") drawVolleyball(canvas, state.engine);
+  else if (state.game === "racing") drawRacing(canvas, state.engine);
+  else drawBrickBreaker(canvas, state.engine);
 }
 
 function renderArcadeStatus() {
@@ -518,6 +617,18 @@ function renderArcadeStatus() {
   const [first, second] = state.engine.players;
   const opponent = state.room?.players?.find((player) => player.id !== roomPlayerId);
   const names = state.room ? [state.room.players[0]?.name || "房主", state.room.players[1]?.name || "等待對手"] : ["玩家 1", state.players === 1 ? "AI" : "玩家 2"];
+  if (state.game === "brickbreaker") {
+    const mode = BRICK_BREAKER_MODES[state.engine.mode];
+    const playerRows = [{ name: names[0], detail: `${first.score} 分・最高 ${first.maxCombo} Combo`, color: "#3d7fd6" }];
+    if (state.engine.mode !== "classic") playerRows.push({ name: names[1], detail: `${second.score} 分・最高 ${second.maxCombo} Combo`, color: "#d94a3c" });
+    setPlayers(playerRows, -1);
+    turnEl.textContent = state.engine.winner !== null ? "本局結束" : state.arcadePaused ? "遊戲暫停" : `${mode.label}・${state.engine.stageLabel}`;
+    if (state.engine.winner !== null) statusEl.textContent = state.engine.winner === -1 ? (state.engine.mode === "versus" ? "雙方同時清空，這局平手！" : "三條生命用盡，重新開始再挑戰。") : `${names[state.engine.winner]} 獲勝！`;
+    else if (state.room && !opponent) statusEl.textContent = "等待第二位玩家加入；房間會保留目前進度。";
+    else if (state.engine.event && state.engine.frame - state.engine.event.frame < 150) statusEl.textContent = state.engine.message;
+    else statusEl.textContent = state.engine.mode === "classic" ? `生命 ${state.engine.lives}・累積 Combo 並接住掉落道具。` : state.engine.mode === "coop" ? `共用 ${state.engine.lives} 條生命，左右兩板互相救球。` : "先清空自己的半場，或讓對手生命歸零。";
+    return;
+  }
   const detail = state.game === "volleyball" ? [`${first.score} 分`, `${second.score} 分`] : [`${first.score} 分・❤ ${first.lives}`, `${second.score} 分・❤ ${second.lives}`];
   setPlayers([{ name: names[0], detail: detail[0], color: "#2e72d2" }, { name: names[1], detail: detail[1], color: "#d94b3c" }], -1);
   const countingDown = state.game === "volleyball" && state.engine.countdown > 0;
@@ -536,7 +647,8 @@ function arcadeLoop() {
     const firstInput = state.onlineRole === "guest" ? state.remoteInput : arcadeInput(0);
     const secondInput = state.onlineRole === "guest" ? arcadeInput(0) : state.room ? state.remoteInput : arcadeInput(1);
     if (state.game === "volleyball") updateVolleyball(state.engine, firstInput, secondInput, useAi);
-    else updateRacing(state.engine, firstInput, secondInput, useAi);
+    else if (state.game === "racing") updateRacing(state.engine, firstInput, secondInput, useAi);
+    else updateBrickBreaker(state.engine, firstInput, secondInput, useAi && state.engine.mode !== "classic");
   }
   arcadeCanvasDraw();
   if (state.engine.frame % 10 === 0 || state.engine.winner !== null) renderArcadeStatus();
@@ -573,16 +685,18 @@ async function syncArcadeRoom() {
   } finally { arcadeSyncInFlight = false; }
 }
 
-function startArcadeGame(game, players, room) {
-  state = { ...state, players, room, engine: game === "volleyball" ? createVolleyballState() : createRacingState(), arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, syncWarningShown: false };
-  boardEl.innerHTML = '<div class="arcade-stage"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls"><button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button></div></div>';
+function startArcadeGame(game, players, room, arcadeMode = "classic") {
+  const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : createBrickBreakerState(arcadeMode);
+  state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, syncWarningShown: false };
+  const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
+  boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
     const key = button.dataset.arcade;
     const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; };
     const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; };
     button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
   });
-  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，空白鍵殺球；空中搭配前、後、↑、↓ 可改變角度。玩家 2：W／A／S／D 移動，F 或 Enter 殺球。前＋↓＋殺球是強力斜下殺。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。";
+  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，空白鍵殺球；空中搭配前、後、↑、↓ 可改變角度。玩家 2：W／A／S／D 移動，F 或 Enter 殺球。前＋↓＋殺球是強力斜下殺。" : game === "racing" ? "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : engine.mode === "classic" ? "使用 ←／→ 移動板子，按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : "P1 使用 ←／→ 移動，空白鍵衝刺；P2 使用 A／D 移動，F 或 Enter 衝刺。合作模式共用生命，對戰模式先清空自己半場。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
   if (room && ROOM_API) { syncArcadeRoom(); arcadeSyncTimer = setInterval(syncArcadeRoom, 90); }
@@ -595,6 +709,6 @@ window.addEventListener("keydown", (event) => {
 });
 window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; } });
 
-primary.addEventListener("click",()=>{if(isArcadeGame(state?.game)){state.arcadePaused=!state.arcadePaused;primary.textContent=state.arcadePaused?"繼續遊戲":"暫停遊戲";renderArcadeStatus();}else if(state?.game==="tetris"){state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&state.turn<state.humans){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
-pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(state.turn!==0)return;const next=passBigTwo(state,0);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();if(state.turn!==0)schedule(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});
-document.querySelector("#casualRestart").addEventListener("click",()=>{const count=state.game==="tetris"||isArcadeGame(state.game)?state.players:state.game==="ninetynine"?state.playerCount:state.game==="checkers"||state.game==="bigtwo"||state.game==="blackjack"||state.game==="pickred"?state.total:state.game==="mahjong"?state.humans:1;startGame(state.game,count,state.difficulty,state.speed,state.room);});
+primary.addEventListener("click",()=>{if(isArcadeGame(state?.game)){state.arcadePaused=!state.arcadePaused;primary.textContent=state.arcadePaused?"繼續遊戲":"暫停遊戲";renderArcadeStatus();}else if(state?.game==="tetris"){state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&canControlMahjongSeat()){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();commitTableState();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
+pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(!canControlTableSeat())return;const next=passBigTwo(state,state.turn);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();commitTableState();queueTableAi(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});
+document.querySelector("#casualRestart").addEventListener("click",()=>{const count=state.game==="tetris"||isArcadeGame(state.game)?state.players:state.game==="ninetynine"?state.playerCount:state.game==="checkers"||state.game==="bigtwo"||state.game==="blackjack"||state.game==="pickred"?state.total:state.game==="mahjong"?state.humans:1;startGame(state.game,count,state.difficulty,state.speed,state.room,state.arcadeMode);});
