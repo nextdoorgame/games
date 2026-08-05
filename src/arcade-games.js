@@ -2,7 +2,7 @@ export const ARCADE_WIDTH = 800;
 export const ARCADE_HEIGHT = 500;
 const VOLLEY_COUNTDOWN_FRAMES = 180;
 const VOLLEY_PLAYER_Y = 332;
-const VOLLEY_SERVE_HEIGHT = 80;
+const VOLLEY_SERVE_HEIGHT = 110;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -76,7 +76,7 @@ function updateVolleyPlayer(game, index, input) {
     player.vx = player.diveDirection * (2.8 + player.diveFrames * .26);
   } else player.vx = input.left ? -4.5 : input.right ? 4.5 : player.vx * .72;
   player.x = clamp(player.x + player.vx, minX, maxX);
-  if (input.up && grounded && player.diveFrames <= 0) player.vy = -11.2;
+  if (input.up && grounded && player.diveFrames <= 0) player.vy = -12.8;
   player.vy += .57; player.y += player.vy;
   if (player.y > 332) { player.y = 332; player.vy = 0; }
   if (player.attackFrames > 0) player.attackFrames -= 1;
@@ -161,7 +161,7 @@ export function createRacingState() {
   return {
     type: "racing",
     players: [{ x: 315, y: 405, color: "#2e72d2", lives: 3, score: 0 }, { x: 485, y: 405, color: "#d94b3c", lives: 3, score: 0 }],
-    obstacles: [], distance: 0, speed: 5.2, laneOffset: 0, spawn: 18, frame: 0, countdown: 300, winner: null
+    obstacles: [], nextObstacleId: 1, distance: 0, speed: 5.2, laneOffset: 0, spawn: 18, frame: 0, countdown: 300, winner: null
   };
 }
 
@@ -206,7 +206,7 @@ export function updateRacing(game, firstInput, secondInput, useAi = false) {
   game.spawn -= 1;
   if (game.spawn <= 0) {
     const kinds = ["cone", "cone", "oil", "barrier"];
-    game.obstacles.push({ x: racingLanes[Math.floor(Math.random() * racingLanes.length)], y: -55, kind: kinds[Math.floor(Math.random() * kinds.length)] });
+    game.obstacles.push({ id: game.nextObstacleId++, x: racingLanes[Math.floor(Math.random() * racingLanes.length)], y: -55, kind: kinds[Math.floor(Math.random() * kinds.length)] });
     game.spawn = Math.max(25, 55 - Math.floor(game.speed * 2.3));
   }
   game.obstacles.forEach((item) => { item.y += game.speed; });

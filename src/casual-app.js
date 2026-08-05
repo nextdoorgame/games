@@ -6,10 +6,11 @@ import { applyBanqiAction, banqiActions, chooseBanqiAction, createBanqiState } f
 import { CHESS_SYMBOLS, allChessMoves, applyChessMove, chessLegalMoves, chooseChessMove, createChessState, isChessCheck } from "./chess.js?v=neighbor-2";
 import { GO_SIZE, applyGoMove, chooseGoMove, createGoState } from "./go.js?v=neighbor-2";
 import { blackjackScore, chooseNinetyNinePlay, choosePickRedPlay, createBlackjackState, createNinetyNineState, createPickRedState, hitBlackjack, legalNinetyNinePlays, pickRedMatches, pickRedValue, playNinetyNine, playPickRed, runBlackjackAiTurn, settleBlackjack, standBlackjack } from "./card-games.js?v=neighbor-2";
-import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-3";
-import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-10";
-import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-10";
-import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from "./brick-breaker.js?v=neighbor-2";
+import { TETRIS_SPEEDS, createTetrisState, dropTetris, moveTetris, rotateTetris, tickTetris, tetrisSnapshot, visibleTetrisBoard } from "./tetris.js?v=neighbor-4";
+import { createRacingState, createVolleyballState, updateRacing, updateVolleyball } from "./arcade-games.js?v=neighbor-11";
+import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js?v=neighbor-11";
+import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from "./brick-breaker.js?v=neighbor-3";
+import { reconcileArcadeGuest } from "./arcade-sync.js?v=neighbor-1";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 
 const GAMES = {
@@ -97,6 +98,7 @@ const arcadeModeFieldset = document.querySelector("#casualArcadeModeFieldset");
 const arcadeModeOptions = document.querySelector("#casualArcadeModeOptions");
 let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisCountdownTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, tableSyncTimer = null, selected = new Set();
 let enteringOnlineGameId = null;
+let tetrisSyncInFlight = false;
 let arcadeSyncInFlight = false;
 let tableSyncInFlight = false;
 let tablePendingCommit = null;
@@ -106,6 +108,7 @@ let launchingRoomId = null;
 let pendingJoinRoom = null;
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
+const arcadeActionPulse = [0, 0];
 const ROOM_API = String(window.GOMOKU_CONFIG?.apiBaseUrl || "").trim().replace(/\/$/, "");
 const roomPlayerName = () => localStorage.getItem("gomoku-player-name") || "隔壁棋手";
 const ONLINE_TABLE_GAMES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine"]);
@@ -613,6 +616,21 @@ function tetrisCellGrid(board, muted = false) {
   return grid;
 }
 
+function tetrisNextGrid(board) {
+  const wrap = document.createElement("div");
+  wrap.className = "tetris-next";
+  wrap.innerHTML = "<span>NEXT</span>";
+  const grid = document.createElement("div");
+  grid.className = "tetris-next-grid";
+  for (const row of board || Array.from({ length: 4 }, () => Array(4).fill(0))) for (const color of row) {
+    const cell = document.createElement("i");
+    if (color) cell.dataset.color = String(color);
+    grid.append(cell);
+  }
+  wrap.append(grid);
+  return wrap;
+}
+
 function tetrisSide(label, snapshot, { opponent = false, waiting = false, countdown = 0 } = {}) {
   const side = document.createElement("section");
   side.className = `tetris-side${opponent ? " opponent" : ""}`;
@@ -620,6 +638,7 @@ function tetrisSide(label, snapshot, { opponent = false, waiting = false, countd
   header.className = "tetris-side-head";
   header.innerHTML = `<div><span>${opponent ? "OPPONENT" : "PLAYER"}</span><strong></strong></div><div class="tetris-score"><b>${snapshot?.score || 0}</b><small>${snapshot?.lines || 0} 行</small></div>`;
   header.querySelector("strong").textContent = label;
+  header.insertBefore(tetrisNextGrid(snapshot?.next), header.lastElementChild);
   side.append(header, tetrisCellGrid(snapshot?.board || Array.from({ length: 20 }, () => Array(10).fill(0)), opponent));
   if (waiting) { const overlay = document.createElement("div"); overlay.className = "tetris-waiting"; overlay.innerHTML = "<b>等待對手加入</b><span>房間保持開啟中…</span>"; side.append(overlay); }
   if (countdown > 0) { const overlay = document.createElement("div"); overlay.className = "tetris-waiting start-countdown"; overlay.innerHTML = `<strong>${countdown}</strong><b>準備開始</b><span>方向鍵準備就位</span>`; side.append(overlay); }
@@ -663,7 +682,8 @@ function controlTetris(action) {
 }
 
 async function syncTetrisRoom() {
-  if (state?.game !== "tetris" || !state.room || !ROOM_API) return;
+  if (state?.game !== "tetris" || !state.room || !ROOM_API || tetrisSyncInFlight) return;
+  tetrisSyncInFlight = true;
   try {
     const data = await roomRequest(`/api/rooms/${state.room.id}/tetris`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, state: tetrisSnapshot(state.engine) }) });
     if (state?.game !== "tetris" || state.room?.id !== data.room.id) return;
@@ -672,7 +692,7 @@ async function syncTetrisRoom() {
     renderTetris();
   } catch (error) {
     if (!state.syncWarningShown) { state.syncWarningShown = true; toast(`對手同步暫停：${error.message}`); }
-  }
+  } finally { tetrisSyncInFlight = false; }
 }
 
 function startTetris(speed, room) {
@@ -682,7 +702,7 @@ function startTetris(speed, room) {
   renderTetris();
   if (state.startCountdownAt) tetrisCountdownTimer = setInterval(() => { if (state?.game !== "tetris") return; renderTetris(); if (Date.now() >= state.startCountdownAt) { state.startCountdownAt = 0; clearInterval(tetrisCountdownTimer); tetrisCountdownTimer = null; renderTetris(); } }, 100);
   tetrisTimer = setInterval(() => { if (state?.game !== "tetris" || state.engine.gameOver || state.startCountdownAt > Date.now()) return; tickTetris(state.engine); renderTetris(); }, TETRIS_SPEEDS[speed].interval);
-  if (room && ROOM_API) { syncTetrisRoom(); tetrisSyncTimer = setInterval(syncTetrisRoom, 700); }
+  if (room && ROOM_API) { syncTetrisRoom(); tetrisSyncTimer = setInterval(syncTetrisRoom, 240); }
 }
 
 window.addEventListener("keydown", (event) => {
@@ -694,8 +714,8 @@ window.addEventListener("keydown", (event) => {
 
 const isArcadeGame = (game) => ["volleyball", "racing", "brickbreaker"].includes(game);
 function arcadeInput(player = 0) {
-  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeTouch.action };
-  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyF || arcadeKeys.Enter };
+  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeTouch.action || Date.now() < arcadeActionPulse[0] };
+  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyF || arcadeKeys.Enter || Date.now() < arcadeActionPulse[1] };
 }
 
 function arcadeCanvasDraw() {
@@ -716,8 +736,11 @@ function renderArcadeStatus() {
     const playerRows = [{ name: names[0], detail: `${first.score} 分・最高 ${first.maxCombo} Combo`, color: "#3d7fd6" }];
     if (state.engine.mode !== "classic") playerRows.push({ name: names[1], detail: `${second.score} 分・最高 ${second.maxCombo} Combo`, color: "#d94a3c" });
     setPlayers(playerRows, -1);
-    turnEl.textContent = state.engine.winner !== null ? "本局結束" : state.arcadePaused ? "遊戲暫停" : `${mode.label}・${state.engine.stageLabel}`;
+    const waitingServe = state.engine.countdown <= 0 && state.engine.worlds.some((world) => world.balls.some((ball) => ball.stuck));
+    turnEl.textContent = state.engine.winner !== null ? "本局結束" : state.engine.countdown > 0 ? "準備開始" : waitingServe ? "等待發球" : state.arcadePaused ? "遊戲暫停" : `${mode.label}・${state.engine.stageLabel}`;
     if (state.engine.winner !== null) statusEl.textContent = state.engine.winner === -1 ? (state.engine.mode === "versus" ? "雙方同時清空，這局平手！" : "三條生命用盡，重新開始再挑戰。") : `${names[state.engine.winner]} 獲勝！`;
+    else if (state.engine.countdown > 0) statusEl.textContent = `倒數 ${Math.max(1, Math.ceil(state.engine.countdown / 60))} 秒後準備發球。`;
+    else if (waitingServe) statusEl.textContent = state.engine.mode === "classic" ? "按空白鍵發球；掉球後也要再次按空白鍵。" : "玩家 1 按空白鍵、玩家 2 按 F 或 Enter 發球。";
     else if (state.room && !opponent) statusEl.textContent = "等待第二位玩家加入；房間會保留目前進度。";
     else if (state.engine.event && state.engine.frame - state.engine.event.frame < 150) statusEl.textContent = state.engine.message;
     else statusEl.textContent = state.engine.mode === "classic" ? `生命 ${state.engine.lives}・累積 Combo 並接住掉落道具。` : state.engine.mode === "coop" ? `共用 ${state.engine.lives} 條生命，左右兩板互相救球。` : "先清空自己的半場，或讓對手生命歸零。";
@@ -760,46 +783,41 @@ async function syncArcadeRoom() {
     state.room = data.room;
     const remote = data.inputs.find((item) => item.playerId !== roomPlayerId);
     state.remoteInput = remote?.input || {};
-    if (state.onlineRole === "guest" && data.snapshot) {
-      const predicted = state.engine, authoritative = data.snapshot;
-      const blend = (current, next, weight = .28) => current + (next - current) * weight;
-      authoritative.players[1].x = blend(predicted.players[1].x, authoritative.players[1].x, .22);
-      authoritative.players[1].y = blend(predicted.players[1].y, authoritative.players[1].y, .22);
-      if (state.game === "volleyball") {
-        authoritative.players[1].vx = predicted.players[1].vx;
-        authoritative.players[1].vy = predicted.players[1].vy;
-        authoritative.ball.x = blend(predicted.ball.x, authoritative.ball.x);
-        authoritative.ball.y = blend(predicted.ball.y, authoritative.ball.y);
-      }
-      state.engine = authoritative;
-    }
+    if (state.onlineRole === "guest" && data.snapshot) state.engine = reconcileArcadeGuest(state.engine, data.snapshot, state.game);
     state.syncWarningShown = false; renderArcadeStatus();
   } catch (error) {
     if (!state.syncWarningShown) { state.syncWarningShown = true; toast(`對戰同步暫停：${error.message}`); }
-  } finally { arcadeSyncInFlight = false; }
+  } finally {
+    arcadeSyncInFlight = false;
+    if (isArcadeGame(state?.game) && state.room && ROOM_API && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, 24);
+  }
 }
 
 function startArcadeGame(game, players, room, arcadeMode = "classic") {
   const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : createBrickBreakerState(arcadeMode);
   if (room && ["racing", "brickbreaker"].includes(game)) engine.countdown = 0;
   state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, syncWarningShown: false };
-  const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
+  const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">發球／衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
   boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
     const key = button.dataset.arcade;
-    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; };
+    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; if (key === "action") arcadeActionPulse[0] = Date.now() + 160; };
     const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; };
     button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
   });
-  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋攻擊可撲救。玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。前＋↓＋攻擊是強力斜下殺。" : game === "racing" ? "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : engine.mode === "classic" ? "使用 ←／→ 移動板子，按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : "P1 使用 ←／→ 移動，空白鍵衝刺；P2 使用 A／D 移動，F 或 Enter 衝刺。合作模式共用生命，對戰模式先清空自己半場。";
+  rulesEl.textContent = game === "volleyball" ? "玩家 1：方向鍵移動，空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋攻擊可撲救。玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。前＋↓＋攻擊是強力斜下殺。" : game === "racing" ? "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : engine.mode === "classic" ? "使用 ←／→ 移動板子；開局與掉球後按空白鍵發球，球運行時按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : "P1 使用 ←／→ 移動、空白鍵發球／衝刺；P2 使用 A／D 移動、F 或 Enter 發球／衝刺。合作模式共用生命，對戰模式先清空自己半場。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
-  if (room && ROOM_API) { syncArcadeRoom(); arcadeSyncTimer = setInterval(syncArcadeRoom, 90); }
+  if (room && ROOM_API) arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
 }
 
 window.addEventListener("keydown", (event) => {
   if (!isArcadeGame(state?.game) || !document.querySelector("#casualView").classList.contains("active") || setup.open) return;
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS", "KeyF", "Enter"].includes(event.code)) { event.preventDefault(); arcadeKeys[event.code] = true; }
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS", "KeyF", "Enter"].includes(event.code)) {
+    event.preventDefault(); arcadeKeys[event.code] = true;
+    if (event.code === "Space") arcadeActionPulse[0] = Date.now() + 160;
+    if (["KeyF", "Enter"].includes(event.code)) arcadeActionPulse[1] = Date.now() + 160;
+  }
   if (event.code === "KeyP") { event.preventDefault(); state.arcadePaused = !state.arcadePaused; primary.textContent = state.arcadePaused ? "繼續遊戲" : "暫停遊戲"; renderArcadeStatus(); }
 });
 window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; } });

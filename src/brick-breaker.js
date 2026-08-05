@@ -14,8 +14,8 @@ function createPaddle(x, color) {
   return { x, y: 455, width: 112, baseWidth: 112, height: 15, color, lives: 3, score: 0, combo: 0, maxCombo: 0, longFrames: 0, shield: 0 };
 }
 
-function createBall(x, y = 425, vx = 4.1, vy = -5.1, owner = 0) {
-  return { x, y, vx, vy, radius: 8, stuck: false, fireFrames: 0, owner };
+function createBall(x, y = 425, vx = 4.1, vy = -5.1, owner = 0, stuck = false) {
+  return { x, y, vx, vy, radius: 8, stuck, fireFrames: 0, owner };
 }
 
 function createBricks(width, offsetX, level, versus = false) {
@@ -49,7 +49,7 @@ function createWorld({ width = WIDTH, offsetX = 0, level = 1, owner = null, vers
     width,
     offsetX,
     owner,
-    balls: [createBall(offsetX + width / 2, 420, owner === 1 ? -4.1 : 4.1, -5.1, owner || 0)],
+    balls: [createBall(offsetX + width / 2, 420, owner === 1 ? -4.1 : 4.1, -5.1, owner || 0, true)],
     bricks: createBricks(width, offsetX, level, versus),
     drops: [],
     clearDelay: 0,
@@ -118,6 +118,8 @@ function updatePaddle(game, world, playerIndex, input = {}) {
   const paddle = game.players[playerIndex];
   const [min, max] = paddleBounds(game, world, playerIndex);
   const speed = input.action ? 8.2 : 6.2;
+  paddle.launchPressed = Boolean(input.action) && !paddle.actionHeld;
+  paddle.actionHeld = Boolean(input.action);
   paddle.x = clamp(paddle.x + (input.left ? -speed : input.right ? speed : 0), min + paddle.width / 2, max - paddle.width / 2);
   if (paddle.longFrames > 0) paddle.longFrames -= 1;
   paddle.width += ((paddle.longFrames > 0 ? 162 : paddle.baseWidth) - paddle.width) * .12;
@@ -178,7 +180,7 @@ function loseBall(game, world, ballIndex, ownerIndex) {
   const player = game.players[ownerIndex];
   if (player.shield > 0) {
     player.shield -= 1;
-    world.balls[ballIndex] = createBall(player.x, 420, ownerIndex === 1 ? -4 : 4, -5.1, ownerIndex);
+    world.balls[ballIndex] = createBall(player.x, 420, ownerIndex === 1 ? -4 : 4, -5.1, ownerIndex, true);
     game.message = "護盾救回一球！";
     return;
   }
@@ -194,7 +196,10 @@ function loseBall(game, world, ballIndex, ownerIndex) {
     game.players.forEach((item) => { item.lives = game.lives; });
     if (game.lives <= 0) game.winner = -1;
   }
-  if (game.winner === null) world.balls.push(createBall(player.x, 420, ownerIndex === 1 ? -4 : 4, -5.1, ownerIndex));
+  if (game.winner === null) {
+    world.balls.push(createBall(player.x, 420, ownerIndex === 1 ? -4 : 4, -5.1, ownerIndex, true));
+    game.message = ownerIndex === 1 ? "玩家 2 按 F 發球" : "按空白鍵發球";
+  }
 }
 
 function updateWorld(game, world, ownerIndex, paddles) {
@@ -204,6 +209,17 @@ function updateWorld(game, world, ownerIndex, paddles) {
   }
   for (let index = world.balls.length - 1; index >= 0; index -= 1) {
     const ball = world.balls[index];
+    if (ball.stuck) {
+      const paddle = game.players[ball.owner ?? ownerIndex];
+      ball.x = paddle.x;
+      ball.y = paddle.y - paddle.height / 2 - ball.radius - 3;
+      if (paddle.launchPressed) {
+        ball.stuck = false;
+        ball.vx = (ball.owner === 1 ? -1 : 1) * 4.1;
+        ball.vy = -5.1;
+        game.message = "發球！";
+      } else continue;
+    }
     if (ball.fireFrames > 0) ball.fireFrames -= 1;
     ball.x += ball.vx; ball.y += ball.vy;
     if (ball.x - ball.radius <= world.offsetX || ball.x + ball.radius >= world.offsetX + world.width) { ball.x = clamp(ball.x, world.offsetX + ball.radius, world.offsetX + world.width - ball.radius); ball.vx *= -1; }
@@ -232,6 +248,10 @@ export function updateBrickBreaker(game, firstInput = {}, secondInput = {}, useA
   if (game.winner !== null) return game;
   game.frame += 1;
   if (game.countdown > 0) {
+    game.players[0].actionHeld = Boolean(firstInput.action);
+    game.players[0].launchPressed = false;
+    game.players[1].actionHeld = Boolean(secondInput.action);
+    game.players[1].launchPressed = false;
     game.countdown -= 1;
     return game;
   }
@@ -266,5 +286,6 @@ export function brickBreakerAi(game) {
   const paddle = game.players[1];
   const ball = [...world.balls].sort((a, b) => b.y - a.y)[0];
   if (!ball) return {};
+  if (ball.stuck) return { action: true };
   return { left: paddle.x > ball.x + 8, right: paddle.x < ball.x - 8, action: Math.abs(paddle.x - ball.x) > 120 };
 }

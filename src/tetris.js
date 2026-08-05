@@ -36,6 +36,14 @@ function cellsFor(piece) {
   return PIECES[piece.type].rotations[piece.rotation].map(([x, y]) => [piece.x + x, piece.y + y]);
 }
 
+export function tetrisPiecePreview(type) {
+  const preview = Array.from({ length: 4 }, () => Array(4).fill(0));
+  const piece = PIECES[type];
+  if (!piece) return preview;
+  for (const [x, y] of piece.rotations[0]) preview[y][x] = piece.color;
+  return preview;
+}
+
 function collides(board, piece) {
   return cellsFor(piece).some(([x, y]) => x < 0 || x >= TETRIS_COLS || y >= TETRIS_ROWS || (y >= 0 && board[y][x]));
 }
@@ -141,5 +149,5 @@ export function visibleTetrisBoard(state) {
 }
 
 export function tetrisSnapshot(state) {
-  return { board: visibleTetrisBoard(state), score: state.score, lines: state.lines, gameOver: state.gameOver, paused: state.paused, updatedAt: Date.now() };
+  return { board: visibleTetrisBoard(state), next: tetrisPiecePreview(state.next), score: state.score, lines: state.lines, gameOver: state.gameOver, paused: state.paused, updatedAt: Date.now() };
 }

@@ -138,6 +138,7 @@ function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null
     status: maxPlayers === 1 ? "full" : "waiting", players: [host],
     snapshots: gameType === "tetris" ? new Map() : null,
     arcadeInputs: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null,
+    arcadeActionUntil: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null,
     arcadeSnapshot: null, tableState: null, tableRevision: 0,
     matchConfig, ...passwordRecord, launchAt: null, launchConfig: null, gameId: null,
     createdAt: Date.now(), updatedAt: Date.now()
@@ -186,8 +187,13 @@ function safeTetrisSnapshot(value) {
   if (!value || !Array.isArray(value.board) || value.board.length !== 20) return null;
   const board = value.board.map((row) => Array.isArray(row) && row.length === 10 ? row.map((cell) => Math.max(0, Math.min(7, Number(cell) || 0))) : null);
   if (board.some((row) => !row)) return null;
+  const next = Array.isArray(value.next) && value.next.length === 4
+    ? value.next.map((row) => Array.isArray(row) && row.length === 4 ? row.map((cell) => Math.max(0, Math.min(7, Number(cell) || 0))) : null)
+    : Array.from({ length: 4 }, () => Array(4).fill(0));
+  if (next.some((row) => !row)) return null;
   return {
     board,
+    next,
     score: Math.max(0, Math.min(10_000_000, Number(value.score) || 0)),
     lines: Math.max(0, Math.min(100_000, Number(value.lines) || 0)),
     gameOver: Boolean(value.gameOver),
@@ -533,14 +539,17 @@ async function handleApi(req, res, url) {
     const playerId = String(body.playerId || "").trim();
     if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
     room.arcadeInputs ||= new Map();
-    room.arcadeInputs.set(playerId, safeArcadeInput(body.input));
+    room.arcadeActionUntil ||= new Map();
+    const input = safeArcadeInput(body.input);
+    room.arcadeInputs.set(playerId, input);
+    if (input.action) room.arcadeActionUntil.set(playerId, Date.now() + 250);
     if (room.players[0]?.id === playerId && body.state) {
       const snapshot = safeArcadeSnapshot(body.state, room.gameType);
       if (!snapshot) return sendJson(res, 400, { error: "遊戲狀態格式不正確" });
       room.arcadeSnapshot = snapshot;
     }
     room.updatedAt = Date.now();
-    return sendJson(res, 200, { room: publicRoom(room), snapshot: room.arcadeSnapshot, inputs: [...room.arcadeInputs.entries()].map(([id, input]) => ({ playerId: id, input })) });
+    return sendJson(res, 200, { room: publicRoom(room), snapshot: room.arcadeSnapshot, inputs: [...room.arcadeInputs.entries()].map(([id, playerInput]) => ({ playerId: id, input: { ...playerInput, action: playerInput.action || (room.arcadeActionUntil.get(id) || 0) > Date.now() } })) });
   }
 
   if (req.method === "GET" && url.pathname === "/api/lobby") {

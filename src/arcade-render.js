@@ -169,6 +169,10 @@ export function drawBrickBreaker(canvas, game) {
     pixelText(ctx, "準備開球", 400, 281, 19, "center", "#fff");
   }
   if (game.event && game.frame - game.event.frame < 150) pixelText(ctx, game.message, 400, 300, 24, "center", "#fff3a5");
+  if (game.countdown <= 0 && game.worlds.some((world) => world.balls.some((ball) => ball.stuck)) && game.winner === null) {
+    ctx.fillStyle = "rgba(5,10,20,.72)"; ctx.fillRect(245, 270, 310, 65);
+    pixelText(ctx, game.mode === "classic" ? "按空白鍵發球" : "P1 空白鍵・P2 F 發球", 400, 303, 20, "center", "#ffe267");
+  }
   if (game.winner !== null) {
     ctx.fillStyle = "rgba(5,10,20,.82)"; ctx.fillRect(185, 188, 430, 120);
     const message = game.winner === -1 ? (game.mode === "versus" ? "雙方平手！" : "生命用盡") : `玩家 ${game.winner + 1} 獲勝`;
