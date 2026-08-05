@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#ffffff" />
     <title>隔壁同樂室 · 家庭小遊戲平台</title>
     <link rel="stylesheet" href="./src/styles.css?v=neighbor-10" />
-    <link rel="stylesheet" href="./src/wood-theme.css?v=wood-1" />
+    <link rel="stylesheet" href="./src/wood-theme.css?v=wood-2" />
   </head>
   <body>
     <div class="app-shell">
@@ -38,10 +38,15 @@
       <main class="main-content">
         <header class="topbar">
           <div class="mobile-brand">隔壁同樂室</div>
+          <div class="topbar-actions">
+          <button id="walletButton" class="wallet-pill" type="button" aria-label="查看織音幣與帳號">
+            <span class="zhiyin-coin" aria-hidden="true"><i>♪</i></span><span><small>織音幣</small><strong id="walletBalance">登入領取</strong></span>
+          </button>
           <div class="profile">
             <div class="avatar" id="profileAvatar">棋</div>
             <div><strong id="profileName">棋手</strong><span><i></i> 線上</span></div>
-            <button id="editName" class="icon-button" type="button" aria-label="修改名稱">✎</button>
+            <button id="editName" class="icon-button" type="button" aria-label="登入或管理帳號">♙</button>
+          </div>
           </div>
         </header>
 
@@ -162,10 +167,11 @@
             <div><h1 id="roomLobbyTitle">五子棋・房間大廳</h1><p id="roomLobbyDescription">選擇在線玩家，邀請對方加入這款遊戲。</p></div>
             <div class="online-badge"><i></i><strong id="onlineCount">0</strong> 位其他玩家在線</div>
           </div>
+          <section class="lobby-reward-strip" aria-label="織音幣每日獎勵"><div><span class="zhiyin-coin" aria-hidden="true"><i>♪</i></span><p><small>每日活動</small><strong>登入或玩一局 +1,000</strong><span>每天只領一次；贏過 AI 再加 2,000</span></p></div><button id="lobbyLoginButton" type="button">登入固定名稱</button></section>
           <div id="roomGameTabs" class="room-game-tabs" aria-label="選擇遊戲"></div>
           <div id="roomLobbyLayout" class="room-lobby-layout" hidden>
             <section class="room-table panel"><div class="room-table-head"><span>房間名稱</span><span>人數</span><span>模式</span><span>狀態</span><span></span></div><div id="roomList"></div></section>
-            <aside class="create-room panel"><h2>建立房間</h2><label><span>房間名稱</span><input id="roomNameInput" maxlength="16" placeholder="例如：隔壁 101"></label><label><span>遊戲人數</span><select id="roomPlayerCount"></select></label><label><span>房間密碼（選填）</span><input id="roomPasswordInput" type="password" maxlength="32" autocomplete="new-password" placeholder="最多 32 個字元"></label><p class="ai-fill-note">3 人以上的房間會先等第二位真人加入，再由房內玩家決定是否讓 AI 補滿空位。</p><button id="createRoom" class="primary-button" type="button">建立房間</button><p>房間依遊戲分類，其他遊戲的玩家不會混入。</p></aside>
+            <aside class="create-room panel"><div class="create-room-title"><span>♬</span><div><h2>建立房間</h2><p>設定規則並邀請好友開桌。</p></div></div><label><span>房間名稱</span><input id="roomNameInput" maxlength="16" placeholder="例如：隔壁 101"></label><label><span>遊戲人數</span><select id="roomPlayerCount"></select></label><label><span>房間密碼（選填）</span><input id="roomPasswordInput" type="password" maxlength="32" autocomplete="new-password" placeholder="最多 32 個字元"></label><fieldset id="roomWagerField"><legend>織音幣下注 <small>雙人真人房限定</small></legend><div class="wager-options"><label><input type="radio" name="roomWager" value="0" checked><span>不下注</span></label><label><input type="radio" name="roomWager" value="500"><span>500</span></label><label><input type="radio" name="roomWager" value="1000"><span>1,000</span></label><label><input type="radio" name="roomWager" value="2000"><span>2,000</span></label><label><input type="radio" name="roomWager" value="5000"><span>5,000</span></label></div><p>雙方皆須登入，勝方獲得對方下注金額。</p></fieldset><p class="ai-fill-note">3 人以上的房間會先等第二位真人加入，再由房內玩家決定是否讓 AI 補滿空位。</p><button id="createRoom" class="primary-button" type="button">建立房間</button><p>房間依遊戲分類，其他遊戲的玩家不會混入。</p></aside>
           </div>
           <section class="online-roster panel"><div><strong>目前在線</strong><span>所有遊戲共用同一份在線狀態</span></div><div id="roomOnlinePlayers">等待玩家上線…</div></section>
           <div id="duelInviteLobby" class="lobby-layout">
@@ -276,6 +282,7 @@
         <fieldset><legend>選擇遊戲</legend><label class="modal-select"><span>遊戲</span><select id="onlineInviteGameSelect" name="gameType"></select></label></fieldset>
         <fieldset id="onlineInvitePlayerFieldset"><legend>房間人數</legend><label class="modal-select"><span>座位</span><select id="onlineInvitePlayerCount" name="maxPlayers"></select></label></fieldset>
         <fieldset><legend>房間密碼</legend><label class="text-field compact"><span>選填，對方接受邀請時需輸入</span><input id="onlineInviteRoomPassword" name="password" type="password" maxlength="32" autocomplete="new-password" placeholder="不設定則任何受邀者皆可加入"></label></fieldset>
+        <fieldset id="onlineWagerField"><legend>織音幣下注</legend><div class="wager-options"><label><input type="radio" name="wager" value="0" checked><span>不下注</span></label><label><input type="radio" name="wager" value="500"><span>500</span></label><label><input type="radio" name="wager" value="1000"><span>1,000</span></label><label><input type="radio" name="wager" value="2000"><span>2,000</span></label><label><input type="radio" name="wager" value="5000"><span>5,000</span></label></div><p class="wager-help">雙方皆須登入；勝方獲得對方下注金額，平手不扣幣。</p></fieldset>
         <fieldset id="onlineSeriesFieldset"><legend>系列賽制</legend><div class="choice-grid series-grid">
           <label><input type="radio" name="bestOf" value="3" checked><span><b>三戰兩勝</b><small>先拿 2 勝</small></span></label>
           <label><input type="radio" name="bestOf" value="5"><span><b>五戰三勝</b><small>先拿 3 勝</small></span></label>
@@ -319,8 +326,24 @@
       </form>
     </dialog>
 
+    <dialog id="authDialog" class="modal auth-modal">
+      <form method="dialog">
+        <button class="modal-close" value="cancel" aria-label="關閉">×</button>
+        <div class="auth-brand"><span class="zhiyin-coin"><i>♪</i></span><div><span class="eyebrow">NEIGHBOR ACCOUNT</span><h2>登入隔壁同樂室</h2></div></div>
+        <p>登入後固定玩家名稱，並開始累積織音幣。</p>
+        <div class="auth-tabs" role="tablist"><button class="active" id="showLoginTab" type="button">登入</button><button id="showRegisterTab" type="button">建立帳號</button></div>
+        <div id="loginFields" class="auth-fields"><label class="text-field"><span>帳號</span><input id="loginUsername" autocomplete="username" placeholder="3–24 位英數字"></label><label class="text-field"><span>密碼</span><input id="loginPassword" type="password" autocomplete="current-password" placeholder="至少 8 個字元"></label></div>
+        <div id="registerFields" class="auth-fields" hidden><label class="text-field"><span>固定玩家名稱</span><input id="registerDisplayName" maxlength="16" autocomplete="nickname" placeholder="其他玩家看到的名稱"></label><label class="text-field"><span>帳號</span><input id="registerUsername" autocomplete="username" placeholder="3–24 位英數字"></label><label class="text-field"><span>密碼</span><input id="registerPassword" type="password" autocomplete="new-password" placeholder="至少 8 個字元"></label><div class="starter-balance"><span class="zhiyin-coin"><i>♪</i></span><p><small>新帳號起始織音幣</small><strong>100,000</strong></p></div></div>
+        <p id="authError" class="form-error" role="alert"></p><button id="submitAuth" class="primary-button full" type="button">登入 →</button>
+      </form>
+    </dialog>
+
+    <dialog id="accountDialog" class="modal account-modal">
+      <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">MY ACCOUNT</span><h2 id="accountDisplayName">我的帳號</h2><div class="account-wallet"><span class="zhiyin-coin"><i>♪</i></span><p><small>目前織音幣</small><strong id="accountBalance">0</strong><span id="accountDailyStatus">今日活動尚未完成</span></p></div><p class="account-id">帳號：<strong id="accountUsername"></strong></p><fieldset><legend>修改密碼</legend><label class="text-field"><span>目前密碼</span><input id="currentPassword" type="password" autocomplete="current-password"></label><label class="text-field"><span>新密碼</span><input id="newPassword" type="password" autocomplete="new-password" placeholder="至少 8 個字元"></label><p id="passwordError" class="form-error" role="alert"></p><button id="changePasswordButton" class="secondary-button full" type="button">更新密碼</button></fieldset><button id="logoutButton" class="text-danger-button" type="button">登出這個帳號</button></form>
+    </dialog>
+
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-13"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-14"></script>
+    <script type="module" src="./src/app.js?v=neighbor-14"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-15"></script>
   </body>
 </html>

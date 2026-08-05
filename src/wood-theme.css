@@ -255,3 +255,103 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 }
 
 @media (prefers-reduced-motion: reduce) { button, .expanded-games .game-card { transition: none; } }
+
+/* 織音幣、帳號與新版淺橡木房間大廳 */
+.topbar-actions { display: flex; align-items: center; gap: 14px; }
+.wallet-pill { min-height: 44px; padding: 5px 14px 5px 6px; display: flex; align-items: center; gap: 9px; color: var(--ink); background: #fff; border: 1px solid #d8cdbd; border-radius: 999px; box-shadow: 0 6px 18px rgba(82,62,38,.07); }
+.wallet-pill > span:last-child { display: grid; text-align: left; line-height: 1.1; }
+.wallet-pill small { color: var(--muted); font-size: 8px; letter-spacing: .04em; }
+.wallet-pill strong { margin-top: 3px; font: 700 13px "Noto Serif TC", serif; }
+.wallet-pill:hover { border-color: #c3a96f; background: #fffdf8; transform: translateY(-1px); }
+.zhiyin-coin { position: relative; display: inline-grid; place-items: center; flex: 0 0 auto; width: 34px; height: 34px; color: #f7d77a; border: 2px solid #d4ad4d; border-radius: 50%; background: #34312b; box-shadow: inset 0 0 0 3px #f1cc69, inset 0 0 0 6px #4b463e, 0 3px 8px rgba(101,72,20,.16); }
+.zhiyin-coin::after { content: ""; position: absolute; inset: 7px; border: 1px solid rgba(247,215,122,.4); border-radius: 50%; }
+.zhiyin-coin i { position: relative; z-index: 1; font: 800 18px/1 Georgia, serif; transform: translateY(-1px); }
+
+#lobbyView { position: relative; max-width: 1400px; }
+#lobbyView::before { content: ""; position: absolute; z-index: -1; left: 0; right: 0; top: 0; height: 300px; background-color: #f7eddb; background-image: repeating-linear-gradient(4deg, rgba(132,94,45,.025) 0 1px, transparent 1px 12px); border-bottom: 1px solid #ead7b9; }
+.lobby-reward-strip { min-height: 138px; margin: 28px 0 24px; padding: 24px; display: flex; align-items: center; justify-content: space-between; gap: 24px; border: 1px solid #d9bd91; background-color: #f0dcba; background-image: repeating-linear-gradient(3deg, rgba(129,88,38,.025) 0 1px, transparent 1px 11px); box-shadow: inset 0 0 0 5px rgba(255,255,255,.24); }
+.lobby-reward-strip > div { width: fit-content; min-width: 310px; padding: 16px 18px; display: flex; align-items: center; gap: 14px; background: #fff; border: 1px solid #ddcfb8; box-shadow: 0 8px 22px rgba(91,65,32,.08); }
+.lobby-reward-strip p { display: grid; gap: 2px; }
+.lobby-reward-strip p small { color: var(--red); font-size: 9px; font-weight: 800; letter-spacing: .06em; }
+.lobby-reward-strip p strong { font: 700 16px "Noto Serif TC", serif; }
+.lobby-reward-strip p span { color: var(--muted); font-size: 9px; }
+.lobby-reward-strip > button { min-height: 40px; padding: 0 18px; color: var(--green); border: 1px solid rgba(72,107,87,.42); background: rgba(255,255,255,.88); font-size: 10px; font-weight: 800; }
+.lobby-reward-strip > button:hover { color: #fff; background: var(--green); }
+
+#lobbyView .room-game-tabs { display: flex; gap: 8px; margin: 0 0 18px; padding: 8px; overflow-x: auto; scrollbar-width: thin; border: 1px solid #dfd5c7; background: rgba(255,255,255,.96); box-shadow: 0 8px 22px rgba(75,56,35,.05); }
+#lobbyView .room-game-tabs button { flex: 0 0 auto; min-width: 86px; min-height: 38px; padding: 0 15px; color: #5d554d; border: 1px solid transparent; font-size: 10px; }
+#lobbyView .room-game-tabs button.active { color: #fff; border-color: var(--red); background: var(--red); }
+.room-lobby-layout { align-items: start; grid-template-columns: minmax(0,1fr) 370px; }
+.room-table { min-height: 430px; overflow: hidden; border-color: #d8c6a9; }
+.room-table::before { content: "空桌等你開局"; display: block; padding: 13px 20px; color: #6d604f; background: #f8eedf; border-bottom: 1px solid #dfcfb6; font: 700 12px "Noto Serif TC", serif; letter-spacing: .03em; }
+.room-table-head { background: #fff; }
+.room-row { margin: 12px 14px 0; border: 1px solid #e1d6c7; background: #fffdf9; box-shadow: 0 4px 12px rgba(79,58,34,.035); }
+.room-row strong { color: #41342a; }
+.room-row button { color: #fff; border-color: var(--green); background: var(--green); }
+.room-empty { margin: 18px; min-height: 270px; display: grid; place-items: center; border: 1px dashed #d9c6a6; background-color: #fff; background-image: repeating-linear-gradient(4deg, rgba(145,103,52,.025) 0 1px, transparent 1px 12px); }
+.create-room { padding: 25px; border-color: #ccb38d; box-shadow: 0 12px 30px rgba(79,58,34,.09); }
+.create-room-title { display: flex; align-items: center; gap: 12px; padding-bottom: 17px; border-bottom: 1px solid #ded3c3; }
+.create-room-title > span { display: grid; place-items: center; width: 38px; height: 38px; color: #fff; background: var(--red); font-size: 18px; }
+.create-room-title h2 { padding: 0; border: 0; font-size: 21px; }
+.create-room-title p { margin-top: 3px; color: var(--muted); font-size: 9px; }
+.create-room fieldset { min-width: 0; margin: 19px 0 0; padding: 0; border: 0; }
+.create-room fieldset legend { display: flex; align-items: baseline; gap: 7px; font-size: 10px; font-weight: 800; }
+.create-room fieldset legend small { color: var(--muted); font-size: 8px; font-weight: 500; }
+.create-room fieldset > p, .wager-help { margin-top: 8px; color: var(--muted); font-size: 8px; line-height: 1.55; }
+.wager-options { display: grid; grid-template-columns: repeat(5, 1fr); margin-top: 9px; border: 1px solid #d6c9b7; background: #fff; }
+.wager-options label { margin: 0 !important; display: block !important; }
+.wager-options input { position: absolute; width: 1px !important; height: 1px !important; opacity: 0; pointer-events: none; }
+.wager-options span { min-height: 38px; display: grid; place-items: center; padding: 0 5px; color: #5f5549; border-right: 1px solid #ddd1c1; font-size: 9px !important; cursor: pointer; }
+.wager-options label:last-child span { border-right: 0; }
+.wager-options input:checked + span { color: #fff; background: var(--red); }
+.online-roster { margin-top: 20px; border-color: #d8c6a9; }
+.online-roster > div:first-child { border-left: 4px solid var(--green); }
+
+.auth-modal form, .account-modal form { width: min(470px, 92vw); }
+.auth-brand { display: flex; align-items: center; gap: 14px; }
+.auth-brand h2 { margin-top: 3px; }
+.auth-tabs { display: grid; grid-template-columns: 1fr 1fr; margin: 23px 0 17px; border-bottom: 1px solid #d9cebd; }
+.auth-tabs button { min-height: 42px; color: var(--muted); border: 0; border-bottom: 3px solid transparent; background: transparent; font-weight: 800; }
+.auth-tabs button.active { color: var(--green); border-bottom-color: var(--green); }
+.auth-fields { display: grid; gap: 14px; }
+.auth-fields[hidden] { display: none; }
+.starter-balance, .account-wallet { display: flex; align-items: center; gap: 14px; padding: 16px; border: 1px solid #d7bf90; background: #fffaf0; }
+.starter-balance p, .account-wallet p { display: grid; gap: 2px; }
+.starter-balance small, .account-wallet small { color: var(--muted); font-size: 8px; }
+.starter-balance strong, .account-wallet strong { font: 700 22px "Noto Serif TC", serif; }
+.account-wallet { margin: 20px 0 12px; }
+.account-wallet p span { color: var(--green); font-size: 9px; }
+.account-id { margin-bottom: 22px; color: var(--muted); font-size: 10px; }
+.account-modal fieldset { display: grid; gap: 12px; margin: 0; padding: 18px; border: 1px solid #ddd2c2; }
+.form-error { min-height: 18px; margin-top: 9px; color: #a94737; font-size: 9px; line-height: 1.4; }
+.text-danger-button { width: 100%; margin-top: 18px; padding: 12px; color: #a94737; border: 0; background: transparent; font-size: 10px; }
+.text-danger-button:hover { background: #fff4f1; }
+.secondary-button.full { width: 100%; justify-content: center; }
+
+@media (max-width: 900px) {
+  .room-lobby-layout { grid-template-columns: 1fr; }
+  .create-room { order: -1; }
+}
+
+@media (max-width: 680px) {
+  .topbar-actions { gap: 7px; }
+  .wallet-pill { min-height: 36px; padding: 3px 9px 3px 3px; }
+  .wallet-pill .zhiyin-coin { width: 28px; height: 28px; }
+  .wallet-pill small { display: none; }
+  .wallet-pill strong { margin: 0; font-size: 10px; }
+  .profile { gap: 5px; }
+  .profile .avatar { display: none; }
+  #lobbyView { padding-top: 35px; }
+  .lobby-reward-strip { min-height: 112px; margin: 22px 0 18px; padding: 14px; align-items: stretch; flex-direction: column; gap: 9px; }
+  .lobby-reward-strip > div { min-width: 0; width: 100%; padding: 12px; }
+  .lobby-reward-strip > button { width: 100%; }
+  #lobbyView .room-game-tabs { margin-left: -4px; margin-right: -4px; }
+  #lobbyView .room-game-tabs button { min-width: 76px; }
+  .room-table { min-height: 320px; }
+  .room-row { grid-template-columns: minmax(0,1fr) auto; padding: 13px; }
+  .room-row strong { font-size: 12px; }
+  .room-row span:first-of-type { display: block; grid-column: 1; }
+  .create-room { padding: 20px 16px; }
+  .wager-options { grid-template-columns: repeat(5, minmax(0,1fr)); }
+  .wager-options span { padding: 0 2px; font-size: 8px !important; }
+}

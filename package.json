@@ -28,6 +28,7 @@
       "vendor/**/*",
       "index.html",
       "server.mjs",
+      "account-store.mjs",
       "package.json"
     ],
     "mac": {

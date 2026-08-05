@@ -2,6 +2,7 @@ import { shouldApplyOnlineSnapshot } from "./game-sync.js";
 import { deviceId, playerId } from "./player-identity.js?v=neighbor-8";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
+import { authHeaders, changePassword, currentAccount, finishRewardGame, login, logout, register, restoreSession, startRewardGame } from "./account.js?v=neighbor-1";
 
 const SIZE = 19;
 const BLACK = 1;
@@ -96,6 +97,11 @@ const els = {
   restartGame: document.querySelector("#restartGame"),
   recordList: document.querySelector("#recordList")
 };
+Object.assign(els, {
+  authDialog: document.querySelector("#authDialog"), accountDialog: document.querySelector("#accountDialog"), walletBalance: document.querySelector("#walletBalance"),
+  lobbyLoginButton: document.querySelector("#lobbyLoginButton"), authError: document.querySelector("#authError"), submitAuth: document.querySelector("#submitAuth"),
+  loginFields: document.querySelector("#loginFields"), registerFields: document.querySelector("#registerFields"), onlineWagerField: document.querySelector("#onlineWagerField")
+});
 
 let playerName = localStorage.getItem("gomoku-player-name") || `棋手 ${String(Math.floor(Math.random() * 9000) + 1000)}`;
 
@@ -136,6 +142,58 @@ function updateIdentity() {
   els.gamePlayerName.textContent = playerName;
   els.profileAvatar.textContent = initials(playerName);
   els.lobbyAvatar.textContent = initials(playerName);
+}
+
+function formatCoins(value) { return new Intl.NumberFormat("zh-TW").format(Number(value) || 0); }
+
+function syncAccountUi(detail = {}) {
+  const account = currentAccount();
+  if (account) {
+    playerName = account.displayName;
+    localStorage.setItem("gomoku-player-name", playerName);
+    els.walletBalance.textContent = formatCoins(account.balance);
+    els.lobbyLoginButton.textContent = `${account.displayName}・${formatCoins(account.balance)} 幣`;
+    document.querySelector("#accountDisplayName").textContent = account.displayName;
+    document.querySelector("#accountUsername").textContent = account.username;
+    document.querySelector("#accountBalance").textContent = formatCoins(account.balance);
+    document.querySelector("#accountDailyStatus").textContent = account.dailyClaimedToday ? "今日 +1,000 已領取" : "今日活動尚未完成";
+  } else {
+    els.walletBalance.textContent = "登入領取";
+    els.lobbyLoginButton.textContent = "登入固定名稱";
+  }
+  updateIdentity();
+  if (detail.reward) showToast(`戰勝 AI，獲得 +${formatCoins(detail.reward)} 織音幣`);
+  else if (detail.bonus) showToast(`每日活動獎勵 +${formatCoins(detail.bonus)} 織音幣`);
+  else if (detail.error) showToast(detail.error);
+}
+
+function openAccountUi() {
+  if (currentAccount()) { syncAccountUi(); els.accountDialog.showModal(); }
+  else { showAuthMode("login"); els.authDialog.showModal(); }
+}
+
+function showAuthMode(mode) {
+  const registering = mode === "register";
+  els.loginFields.hidden = registering;
+  els.registerFields.hidden = !registering;
+  document.querySelector("#showLoginTab").classList.toggle("active", !registering);
+  document.querySelector("#showRegisterTab").classList.toggle("active", registering);
+  els.submitAuth.textContent = registering ? "建立帳號並領取 100,000 →" : "登入 →";
+  els.submitAuth.dataset.mode = registering ? "register" : "login";
+  els.authError.textContent = "";
+}
+
+async function submitAuthForm() {
+  els.submitAuth.disabled = true;
+  els.authError.textContent = "";
+  try {
+    if (els.submitAuth.dataset.mode === "register") await register({ username: document.querySelector("#registerUsername").value, password: document.querySelector("#registerPassword").value, displayName: document.querySelector("#registerDisplayName").value });
+    else await login({ username: document.querySelector("#loginUsername").value, password: document.querySelector("#loginPassword").value });
+    els.authDialog.close();
+    syncAccountUi();
+    fetchLobby();
+  } catch (error) { els.authError.textContent = error.message; }
+  finally { els.submitAuth.disabled = false; }
 }
 
 function updateHostingStatus() {
@@ -610,6 +668,7 @@ function startSingleRound(difficulty = game?.difficulty || "medium") {
   els.gameView?.classList?.toggle?.("xiangqi-theme", series.gameType === "xiangqi");
   showView("game");
   renderBoard();
+  startRewardGame(series.gameType);
   if (game.aiColor === BLACK) scheduleAiMove();
 }
 
@@ -619,6 +678,7 @@ function settleSingleRound() {
   if (game.winner === game.playerColor) series.myWins += 1;
   else if (game.winner === game.aiColor) series.opponentWins += 1;
   else series.draws += 1;
+  finishRewardGame(game.winner === game.playerColor ? "win" : game.winner === game.aiColor ? "loss" : "draw");
   saveCurrentRecord();
   renderGamePanel();
   showRoundEndDialog();
@@ -652,6 +712,7 @@ function restartSingle() {
   if (gameMode !== "single") return;
   const { gameType, difficulty, playerColor, aiColor } = game;
   resetGameState("single", { gameType, difficulty, playerColor, aiColor, roundSettled: false, selectedIndex: null, legalMoves: [] });
+  startRewardGame(gameType);
   renderBoard();
   if (aiColor === BLACK) scheduleAiMove();
 }
@@ -660,7 +721,7 @@ async function api(path, options = {}) {
   if (!ONLINE_AVAILABLE) throw new Error("線上服務尚未設定，單人模式仍可正常遊玩");
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
-    headers: { "content-type": "application/json", ...(options.headers || {}) }
+    headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) }
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "連線發生問題");
@@ -688,8 +749,8 @@ async function fetchLobby() {
       if (DUEL_INVITE_GAMES.has(currentInvite.gameType)) {
         const inviterIsBlack = currentInvite.inviterColor !== WHITE;
         const firstRoundLabel = inviteIsXiangqi ? (inviterIsBlack ? "對方執紅先手・你執黑後手" : "你執紅先手・對方執黑後手") : (inviterIsBlack ? "對方執黑先手・你執白後手" : "你執黑先手・對方執白後手");
-        els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘`;
-      } else els.inviterSeriesLabel.textContent = `${currentInvite.maxPlayers || 2} 人房・接受後進入房間等待房主開局`;
+        els.inviterSeriesLabel.textContent = `${currentInvite.bestOf === 5 ? "五戰三勝" : "三戰兩勝"}・${firstRoundLabel}・每步 ${currentInvite.turnTimeMinutes || 3} 分鐘${currentInvite.wager ? `・下注 ${formatCoins(currentInvite.wager)} 織音幣` : ""}`;
+      } else els.inviterSeriesLabel.textContent = `${currentInvite.maxPlayers || 2} 人房・接受後進入房間等待房主開局${currentInvite.wager ? `・下注 ${formatCoins(currentInvite.wager)} 織音幣` : ""}`;
       els.invitePasswordField.hidden = !currentInvite.hasPassword;
       els.invitePasswordInput.value = "";
       els.inviteDialog.showModal();
@@ -756,13 +817,14 @@ function configureInviteGame(gameType) {
   els.onlineFirstMoveFieldset.hidden = !isDuel;
   els.onlineTurnTimeFieldset.hidden = !isDuel;
   els.onlineInviteHint.textContent = isDuel ? "時間用完仍未落子時，伺服器會隨機替該玩家下一步。" : "接受邀請後會進入同一個房間；房主開局時，全房會一起倒數 5 秒。";
+  els.onlineWagerField.hidden = Number(els.onlineInvitePlayerCount.value) !== 2;
 }
 
-async function sendInvite(player, button, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password) {
+async function sendInvite(player, button, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password, wager) {
   button.disabled = true;
   button.textContent = "送出中…";
   try {
-    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password }) });
+    await api("/api/invite", { method: "POST", body: JSON.stringify({ fromId: playerId, fromName: playerName, toId: player.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password, wager }) });
     pendingInvites.add(player.id);
     button.textContent = "等待回覆";
     els.onlineSeriesDialog.close();
@@ -1081,6 +1143,7 @@ els.onlineInviteGameSelect.replaceChildren(...Object.entries(ONLINE_GAME_META).m
   const option = document.createElement("option"); option.value = value; option.textContent = meta.name; return option;
 }));
 els.onlineInviteGameSelect.addEventListener("change", () => configureInviteGame(els.onlineInviteGameSelect.value));
+els.onlineInvitePlayerCount.addEventListener("change", () => { els.onlineWagerField.hidden = Number(els.onlineInvitePlayerCount.value) !== 2; });
 configureInviteGame("gomoku");
 document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   if (!pendingInvitePlayer || !pendingInviteButton) return;
@@ -1092,9 +1155,27 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
   const password = String(data.get("password") || "").trim().slice(0, 32);
-  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password);
+  const wager = maxPlayers === 2 ? Math.min(5000, Math.max(0, Number(data.get("wager")) || 0)) : 0;
+  sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password, wager);
 });
-document.querySelector("#editName").addEventListener("click", () => { els.nameInput.value = playerName; els.nameDialog.showModal(); els.nameInput.focus(); });
+document.querySelector("#editName").addEventListener("click", openAccountUi);
+document.querySelector("#walletButton").addEventListener("click", openAccountUi);
+els.lobbyLoginButton.addEventListener("click", openAccountUi);
+document.querySelector("#showLoginTab").addEventListener("click", () => showAuthMode("login"));
+document.querySelector("#showRegisterTab").addEventListener("click", () => showAuthMode("register"));
+els.submitAuth.addEventListener("click", submitAuthForm);
+document.querySelector("#loginPassword").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitAuthForm(); } });
+document.querySelector("#registerPassword").addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); submitAuthForm(); } });
+document.querySelector("#changePasswordButton").addEventListener("click", async () => {
+  const button = document.querySelector("#changePasswordButton");
+  const error = document.querySelector("#passwordError");
+  button.disabled = true; error.textContent = "";
+  try { await changePassword(document.querySelector("#currentPassword").value, document.querySelector("#newPassword").value); error.textContent = "密碼已更新"; document.querySelector("#currentPassword").value = ""; document.querySelector("#newPassword").value = ""; }
+  catch (cause) { error.textContent = cause.message; }
+  finally { button.disabled = false; }
+});
+document.querySelector("#logoutButton").addEventListener("click", () => { logout(); els.accountDialog.close(); showToast("已登出，仍可使用訪客模式遊玩"); });
+window.addEventListener("neighbor-account-change", (event) => syncAccountUi(event.detail));
 document.querySelector("#saveName").addEventListener("click", () => {
   const next = els.nameInput.value.trim();
   if (!next) { els.nameInput.focus(); return; }
@@ -1127,4 +1208,5 @@ document.addEventListener("visibilitychange", () => {
 updateIdentity();
 updateHostingStatus();
 showView("home");
+restoreSession().then(() => syncAccountUi());
 window.GOMOKU_ONLINE = { startGame: startOnlineGame };

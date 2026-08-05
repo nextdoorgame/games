@@ -12,6 +12,7 @@ import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js
 import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from "./brick-breaker.js?v=neighbor-3";
 import { reconcileArcadeGuest } from "./arcade-sync.js?v=neighbor-1";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
+import { authHeaders, finishRewardGame, startRewardGame } from "./account.js?v=neighbor-1";
 
 const GAMES = {
   gomoku: { name: "五子棋", players: [2], mode: "19×19 棋盤" },
@@ -60,6 +61,7 @@ const duelInviteLobby = document.querySelector("#duelInviteLobby");
 const roomCount = document.querySelector("#roomPlayerCount");
 const roomName = document.querySelector("#roomNameInput");
 const roomPassword = document.querySelector("#roomPasswordInput");
+const roomWagerField = document.querySelector("#roomWagerField");
 const roomPasswordDialog = document.querySelector("#roomPasswordDialog");
 const roomPasswordTitle = document.querySelector("#roomPasswordTitle");
 const joinRoomPassword = document.querySelector("#joinRoomPassword");
@@ -96,7 +98,7 @@ const difficultyFieldset = document.querySelector("#casualDifficultyFieldset");
 const speedFieldset = document.querySelector("#casualSpeedFieldset");
 const arcadeModeFieldset = document.querySelector("#casualArcadeModeFieldset");
 const arcadeModeOptions = document.querySelector("#casualArcadeModeOptions");
-let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisCountdownTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, tableSyncTimer = null, selected = new Set();
+let roomGame = "gomoku", pendingGame = "reversi", pendingRoom = null, state = null, aiTimer = null, tetrisTimer = null, tetrisCountdownTimer = null, tetrisSyncTimer = null, arcadeFrame = null, arcadeSyncTimer = null, tableSyncTimer = null, rewardMonitorTimer = null, selected = new Set();
 let enteringOnlineGameId = null;
 let tetrisSyncInFlight = false;
 let arcadeSyncInFlight = false;
@@ -147,10 +149,11 @@ function setRoomGame(game) {
   roomLobbyLayout.hidden = false;
   tabs.querySelectorAll("button").forEach((button) => button.classList.toggle("active", button.dataset.game === roomGame));
   roomCount.replaceChildren(...GAMES[roomGame].players.map((count) => { const option = document.createElement("option"); option.value = count; option.textContent = `${count} 人`; return option; }));
+  roomWagerField.hidden = Number(roomCount.value) !== 2;
   renderRooms();
 }
 async function roomRequest(path, options = {}) {
-  const response = await fetch(`${ROOM_API}${path}`, { ...options, headers: { "content-type": "application/json" } });
+  const response = await fetch(`${ROOM_API}${path}`, { ...options, headers: { "content-type": "application/json", ...authHeaders(), ...(options.headers || {}) } });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || "房間服務暫時無法使用");
   return data;
@@ -256,7 +259,7 @@ async function renderRooms() {
   if (!rooms.length) { roomList.innerHTML = '<div class="room-empty">目前還沒有房間，成為第一位開桌的人吧。</div>'; return; }
   roomList.replaceChildren(...rooms.map((room) => {
     const row = document.createElement("div"); row.className = "room-row"; row.innerHTML = "<strong></strong><span></span><span></span><span></span><button type=\"button\"></button>";
-    row.querySelector("strong").textContent = `${room.hasPassword ? "🔒 " : ""}${room.name}`;
+    row.querySelector("strong").textContent = `${room.hasPassword ? "🔒 " : ""}${room.name}${room.wager ? `・♪ ${Number(room.wager).toLocaleString("zh-TW")}` : ""}`;
     const isMember = room.players?.some((player) => player.id === roomPlayerId);
     const aiSeats = room.ai ? Math.max(0, room.max - room.current) : 0;
     const spans = row.querySelectorAll("span"); spans[0].textContent = `${room.current}/${room.max}`; spans[1].textContent = `${room.players?.map((player) => player.name).join("、") || GAMES[roomGame].mode}${aiSeats ? ` ＋ ${aiSeats} AI` : ""}`; spans[2].textContent = room.status;
@@ -293,16 +296,17 @@ confirmJoinRoom.addEventListener("click", async () => {
 joinRoomPassword.addEventListener("keydown", (event) => { if (event.key === "Enter") { event.preventDefault(); confirmJoinRoom.click(); } });
 roomPasswordDialog.addEventListener("close", () => { pendingJoinRoom = null; joinRoomPassword.value = ""; });
 document.querySelector("#createRoom").addEventListener("click", async () => {
-  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = false, password = roomPassword.value.trim().slice(0, 32);
+  const name = (roomName.value.trim() || `${GAMES[roomGame].name}新桌`).slice(0, 16), max = Number(roomCount.value), aiFill = false, password = roomPassword.value.trim().slice(0, 32), wager = max === 2 ? Number(document.querySelector('input[name="roomWager"]:checked')?.value || 0) : 0;
   try {
     let createdRoom = null;
-    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostDeviceId: roomDeviceId, hostName: roomPlayerName(), password }) });
+    if (ROOM_API) createdRoom = await roomRequest("/api/rooms", { method: "POST", body: JSON.stringify({ gameType: roomGame, name, maxPlayers: max, aiFill, hostId: roomPlayerId, hostDeviceId: roomDeviceId, hostName: roomPlayerName(), password, wager }) });
     else { const rooms = storedRooms(), localRoom = { id: `local-${crypto.randomUUID()}`, game: roomGame, gameType: roomGame, name, current: 1, max, maxPlayers: max, ai: aiFill, aiFill, hasPassword: Boolean(password), password, status: "等待中", players: [{ id: roomPlayerId, name: roomPlayerName() }] }; rooms.push(localRoom); saveRooms(rooms); createdRoom = localRoom; }
     roomName.value = ""; roomPassword.value = ""; await renderRooms(); toast(`已建立「${name}」${password ? "（已上鎖）" : ""}`);
     if (createdRoom) openRoomWaiting(createdRoom);
   } catch (error) { toast(error.message); }
 });
 setRoomGame("gomoku");
+roomCount.addEventListener("change", () => { roomWagerField.hidden = Number(roomCount.value) !== 2; });
 window.setInterval(() => { if (document.querySelector("#lobbyView").classList.contains("active")) renderRooms(); }, 3000);
 
 roomWaitingDialog.addEventListener("close", stopRoomWaiting);
@@ -426,7 +430,21 @@ document.querySelector("#startCasual").addEventListener("click", async () => {
 function setPlayers(items, active) {
   playersEl.replaceChildren(...items.map((item, index) => { const row = document.createElement("div"); row.className = `casual-player${index === active ? " active" : ""}`; row.style.setProperty("--player-color", item.color || "#777"); row.innerHTML = "<b></b><span></span>"; row.querySelector("b").textContent = item.name; row.querySelector("span").textContent = item.detail || ""; return row; }));
 }
-function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisCountdownTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisCountdownTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; arcadeFrame = null; }
+function stopGameLoops() { clearInterval(tetrisTimer); clearInterval(tetrisCountdownTimer); clearInterval(tetrisSyncTimer); clearInterval(arcadeSyncTimer); clearInterval(tableSyncTimer); clearInterval(rewardMonitorTimer); cancelAnimationFrame(arcadeFrame); tetrisTimer = null; tetrisCountdownTimer = null; tetrisSyncTimer = null; arcadeSyncTimer = null; tableSyncTimer = null; rewardMonitorTimer = null; arcadeFrame = null; }
+
+function soloResult() {
+  if (!state || state.room) return null;
+  if (state.game === "reversi" && state.finished) { const winner = reversiWinner(state.board); return winner === DARK ? "win" : winner === LIGHT ? "loss" : "draw"; }
+  if (state.game === "checkers" && state.winner) return state.winner === 1 ? "win" : "loss";
+  if (state.game === "banqi" && state.winner !== null) return state.winner === 0 ? "win" : "loss";
+  if (state.game === "chess" && (state.winner || state.draw)) return state.draw ? "draw" : state.winner === "white" ? "win" : "loss";
+  if (state.game === "go" && state.winner) return state.winner === 3 ? "draw" : state.winner === 1 ? "win" : "loss";
+  if (["mahjong", "bigtwo", "pickred", "ninetynine"].includes(state.game) && state.winner !== null) return state.winner === 0 ? "win" : "loss";
+  if (state.game === "blackjack" && state.phase === "finished") return state.results?.[0] === "win" ? "win" : state.results?.[0] === "push" ? "draw" : "loss";
+  if (["volleyball", "racing", "brickbreaker"].includes(state.game) && state.engine?.winner !== null) return state.engine.winner === -1 ? "draw" : state.engine.winner === 0 ? "win" : "loss";
+  return null;
+}
+
 function startGame(game, players, difficulty, speed = "normal", room = null, arcadeMode = "classic") {
   clearTimeout(aiTimer); stopGameLoops(); selected.clear(); tableAiQueuedKey = null;
   window.NEIGHBOR_CASUAL_ACTIVE_ROOM_ID = room?.id || null;
@@ -435,6 +453,11 @@ function startGame(game, players, difficulty, speed = "normal", room = null, arc
   state = { game, players, difficulty, speed, room, arcadeMode, localSeat, humanSeats: room?.players?.length || 1, roomRevision: 0, roomReady: !room };
   showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; pass.hidden = true; primary.hidden = true;
   ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(room ? room.players.length : players, room ? room.maxPlayers : 4), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room), brickbreaker: () => startArcadeGame("brickbreaker", players, room, arcadeMode) })[game]?.();
+  if (!room) {
+    startRewardGame(game);
+    const hasAiOpponent = ["reversi", "checkers", "banqi", "chess", "go", "bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) || game === "mahjong" && players < 4 || ["volleyball", "racing"].includes(game) && players === 1;
+    if (hasAiOpponent) rewardMonitorTimer = setInterval(() => { const result = soloResult(); if (result) { clearInterval(rewardMonitorTimer); rewardMonitorTimer = null; finishRewardGame(result); } }, 400);
+  }
   if (room && ONLINE_TABLE_GAMES.has(game)) startTableRoomSync();
 }
 

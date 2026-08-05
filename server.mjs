@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
+import { accountFromRequest, accountLedger, beginAiGame, canAffordWager, changeAccountPassword, finishAiGame, loginAccount, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
 
 const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
@@ -50,7 +51,7 @@ function sendJson(res, status, body) {
     "cache-control": "no-store",
     "access-control-allow-origin": process.env.ALLOWED_ORIGIN || "*",
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "content-type"
+    "access-control-allow-headers": "content-type, authorization"
   });
   res.end(JSON.stringify(body));
 }
@@ -106,6 +107,8 @@ function publicRoom(room) {
     launchAt: room.launchAt || null,
     launchConfig: room.launchConfig || null,
     hasPassword: Boolean(room.passwordHash),
+    wager: room.wager || 0,
+    wagerResult: room.wagerResult || null,
     createdAt: room.createdAt,
     updatedAt: room.updatedAt
   };
@@ -131,7 +134,7 @@ function verifyRoomPassword(room, value) {
   return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
-function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null, password = "" }) {
+function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null, password = "", wager = 0 }) {
   const passwordRecord = createPasswordRecord(password);
   return {
     id: randomUUID(), gameType, name, maxPlayers, aiFill: false,
@@ -140,9 +143,52 @@ function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null
     arcadeInputs: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null,
     arcadeActionUntil: ["volleyball", "racing", "brickbreaker"].includes(gameType) ? new Map() : null,
     arcadeSnapshot: null, tableState: null, tableRevision: 0,
-    matchConfig, ...passwordRecord, launchAt: null, launchConfig: null, gameId: null,
+    matchConfig, wager: maxPlayers === 2 ? safeWager(wager) : 0, wagerSettled: false, wagerResult: null,
+    ...passwordRecord, launchAt: null, launchConfig: null, gameId: null,
     createdAt: Date.now(), updatedAt: Date.now()
   };
+}
+
+function roomWagerReady(room) {
+  if (!room.wager) return { ready: true };
+  if (room.players.length !== 2 || room.players.some((player) => !player.accountId)) return { ready: false, error: "織音幣對戰需要兩位玩家都先登入" };
+  if (room.players.some((player) => !canAffordWager(player.accountId, room.wager))) return { ready: false, error: "有玩家的織音幣餘額不足" };
+  return { ready: true };
+}
+
+async function settleRoomWager(room, winnerSeat) {
+  if (!room?.wager || room.wagerSettled || !Number.isInteger(winnerSeat) || winnerSeat < 0 || winnerSeat > 1) return;
+  const winner = room.players[winnerSeat];
+  const loser = room.players[winnerSeat === 0 ? 1 : 0];
+  try {
+    await settleWager(winner.accountId, loser.accountId, room.wager, { roomId: room.id, gameType: room.gameType });
+    room.wagerResult = { status: "settled", winnerName: winner.name, amount: room.wager };
+  } catch (error) {
+    room.wagerResult = { status: "failed", message: error.message };
+  }
+  room.wagerSettled = true;
+  room.updatedAt = Date.now();
+}
+
+async function settleDuelRoom(game) {
+  if (!game?.seriesWinnerId) return;
+  const room = [...rooms.values()].find((candidate) => candidate.gameId === game.id);
+  if (!room) return;
+  const winnerSeat = room.players.findIndex((player) => player.id === game.seriesWinnerId);
+  await settleRoomWager(room, winnerSeat);
+}
+
+function tableWinnerSeat(state, gameType) {
+  if (!state) return null;
+  if (gameType === "chess") return state.winner === "white" ? 0 : state.winner === "black" ? 1 : null;
+  if (gameType === "reversi" && state.finished && Array.isArray(state.board)) {
+    const dark = state.board.filter((piece) => piece === 1).length;
+    const light = state.board.filter((piece) => piece === 2).length;
+    return dark === light ? null : dark > light ? 0 : 1;
+  }
+  if (gameType === "go") return [1, 2].includes(Number(state.winner)) ? Number(state.winner) - 1 : null;
+  if (gameType === "checkers") return Number(state.winner) > 0 ? Number(state.winner) - 1 : null;
+  return Number.isInteger(state.winner) && state.winner >= 0 ? state.winner : null;
 }
 
 function roomCanStart(room) {
@@ -393,6 +439,56 @@ function resetRound(game, restartSeries) {
 }
 
 async function handleApi(req, res, url) {
+  if (req.method === "POST" && url.pathname === "/api/auth/register") {
+    try {
+      const body = await readJson(req);
+      return sendJson(res, 201, await registerAccount(body));
+    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/login") {
+    try {
+      const body = await readJson(req);
+      return sendJson(res, 200, await loginAccount(body));
+    } catch (error) { return sendJson(res, 401, { error: error.message }); }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/auth/me") {
+    try { return sendJson(res, 200, { account: await restoreAccount(req) }); }
+    catch (error) { return sendJson(res, 401, { error: error.message }); }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/auth/change-password") {
+    const account = await accountFromRequest(req);
+    if (!account) return sendJson(res, 401, { error: "請先登入" });
+    try {
+      const body = await readJson(req);
+      return sendJson(res, 200, { account: await changeAccountPassword(account, body.currentPassword, body.newPassword) });
+    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/account/ledger") {
+    const account = await accountFromRequest(req);
+    if (!account) return sendJson(res, 401, { error: "請先登入" });
+    return sendJson(res, 200, await accountLedger(account));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/account/game-start") {
+    const account = await accountFromRequest(req);
+    if (!account) return sendJson(res, 401, { error: "請先登入後領取遊戲獎勵" });
+    const body = await readJson(req);
+    return sendJson(res, 201, await beginAiGame(account, body.gameType));
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/account/game-result") {
+    const account = await accountFromRequest(req);
+    if (!account) return sendJson(res, 401, { error: "請先登入" });
+    try {
+      const body = await readJson(req);
+      return sendJson(res, 200, await finishAiGame(account, body.gameId, body.result));
+    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+  }
+
   if (req.method === "GET" && url.pathname === "/api/rooms") {
     cleanupLobby();
     const gameType = ROOM_GAME_TYPES.has(url.searchParams.get("gameType")) ? url.searchParams.get("gameType") : "gomoku";
@@ -401,6 +497,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/rooms") {
     const body = await readJson(req);
+    const account = await accountFromRequest(req);
     const gameType = ROOM_GAME_TYPES.has(body.gameType) ? body.gameType : "gomoku";
     const allowed = ROOM_PLAYER_LIMITS[gameType];
     const maxPlayers = allowed.includes(Number(body.maxPlayers)) ? Number(body.maxPlayers) : allowed.at(-1);
@@ -408,12 +505,16 @@ async function handleApi(req, res, url) {
     const hostDeviceId = String(body.hostDeviceId || "").trim();
     const hostName = String(body.hostName || "棋手").trim().slice(0, 16);
     if (!hostId) return sendJson(res, 400, { error: "缺少房主資料" });
+    const wager = maxPlayers === 2 ? safeWager(body.wager) : 0;
+    if (wager && !account) return sendJson(res, 401, { error: "下注房需要房主先登入" });
+    if (wager && !canAffordWager(account.id, wager)) return sendJson(res, 409, { error: "織音幣餘額不足" });
     const room = createRoomRecord({
       gameType,
       name: String(body.name || `${hostName}的房間`).trim().slice(0, 16),
       maxPlayers,
-      host: { id: hostId, deviceId: hostDeviceId, name: hostName },
-      password: body.password
+      host: { id: hostId, deviceId: hostDeviceId, name: account?.displayName || hostName, accountId: account?.id || null },
+      password: body.password,
+      wager
     });
     rooms.set(room.id, room);
     return sendJson(res, 201, publicRoom(room));
@@ -434,7 +535,8 @@ async function handleApi(req, res, url) {
     const body = await readJson(req);
     const playerId = String(body.playerId || "").trim();
     const deviceId = String(body.deviceId || "").trim();
-    const playerName = String(body.playerName || "棋手").trim().slice(0, 16);
+    const account = await accountFromRequest(req);
+    const playerName = account?.displayName || String(body.playerName || "棋手").trim().slice(0, 16);
     if (!playerId) return sendJson(res, 400, { error: "缺少玩家資料" });
     ensureRoomLaunched(room);
     const existingPlayer = room.players.find((player) => player.id === playerId || deviceId && player.deviceId === deviceId);
@@ -442,12 +544,15 @@ async function handleApi(req, res, url) {
       existingPlayer.id = playerId;
       existingPlayer.deviceId = deviceId;
       existingPlayer.name = playerName;
+      existingPlayer.accountId = account?.id || existingPlayer.accountId || null;
     } else {
       if (!verifyRoomPassword(room, body.password)) return sendJson(res, 401, { error: "房間密碼不正確" });
       if (["starting", "playing"].includes(room.status)) return sendJson(res, 409, { error: "這個房間已經開始遊戲" });
       if (room.aiFill) return sendJson(res, 409, { error: "剩餘座位已由 AI 補滿" });
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "房間已滿" });
-      room.players.push({ id: playerId, deviceId, name: playerName });
+      if (room.wager && !account) return sendJson(res, 401, { error: "下注房需要先登入才能加入" });
+      if (room.wager && !canAffordWager(account.id, room.wager)) return sendJson(res, 409, { error: "織音幣餘額不足" });
+      room.players.push({ id: playerId, deviceId, name: playerName, accountId: account?.id || null });
     }
     room.status = room.players.length >= room.maxPlayers ? "full" : room.aiFill ? "ready" : "waiting";
     room.updatedAt = Date.now();
@@ -480,6 +585,8 @@ async function handleApi(req, res, url) {
     ensureRoomLaunched(room);
     if (room.status === "starting" || room.status === "playing") return sendJson(res, 200, publicRoom(room));
     if (!roomCanStart(room)) return sendJson(res, 409, { error: "請等待玩家到齊，或先使用 AI 補滿空位" });
+    const wagerState = roomWagerReady(room);
+    if (!wagerState.ready) return sendJson(res, 409, { error: wagerState.error });
     room.launchConfig = safeLaunchConfig(body.config, room);
     room.launchAt = Date.now() + 5_000;
     room.status = "starting";
@@ -512,6 +619,12 @@ async function handleApi(req, res, url) {
       room.tableRevision += 1;
       room.status = "playing";
       room.updatedAt = Date.now();
+      const winnerSeat = tableWinnerSeat(snapshot, room.gameType);
+      if (winnerSeat !== null) await settleRoomWager(room, winnerSeat);
+      else if (room.wager && (snapshot.finished || snapshot.draw || snapshot.winner === 3)) {
+        room.wagerSettled = true;
+        room.wagerResult = { status: "draw", amount: 0 };
+      }
     }
     return sendJson(res, 200, { room: publicRoom(room), state: room.tableState, revision: room.tableRevision });
   }
@@ -528,6 +641,11 @@ async function handleApi(req, res, url) {
     room.snapshots ||= new Map();
     room.snapshots.set(playerId, snapshot);
     room.updatedAt = Date.now();
+    if (room.snapshots.size === 2 && [...room.snapshots.values()].every((item) => item.gameOver)) {
+      const scores = room.players.map((player) => room.snapshots.get(player.id)?.score || 0);
+      if (scores[0] !== scores[1]) await settleRoomWager(room, scores[0] > scores[1] ? 0 : 1);
+      else if (room.wager) { room.wagerSettled = true; room.wagerResult = { status: "draw", amount: 0 }; }
+    }
     return sendJson(res, 200, { room: publicRoom(room), snapshots: [...room.snapshots.entries()].map(([id, state]) => ({ playerId: id, state })) });
   }
 
@@ -547,6 +665,7 @@ async function handleApi(req, res, url) {
       const snapshot = safeArcadeSnapshot(body.state, room.gameType);
       if (!snapshot) return sendJson(res, 400, { error: "遊戲狀態格式不正確" });
       room.arcadeSnapshot = snapshot;
+      if (Number.isInteger(snapshot.winner) && snapshot.winner >= 0) await settleRoomWager(room, snapshot.winner);
     }
     room.updatedAt = Date.now();
     return sendJson(res, 200, { room: publicRoom(room), snapshot: room.arcadeSnapshot, inputs: [...room.arcadeInputs.entries()].map(([id, playerInput]) => ({ playerId: id, input: { ...playerInput, action: playerInput.action || (room.arcadeActionUntil.get(id) || 0) > Date.now() } })) });
@@ -555,10 +674,11 @@ async function handleApi(req, res, url) {
   if (req.method === "GET" && url.pathname === "/api/lobby") {
     const playerId = url.searchParams.get("playerId")?.trim();
     const deviceId = url.searchParams.get("deviceId")?.trim() || "";
-    const name = url.searchParams.get("name")?.trim().slice(0, 16);
+    const account = await accountFromRequest(req);
+    const name = account?.displayName || url.searchParams.get("name")?.trim().slice(0, 16);
     if (!playerId || !name) return sendJson(res, 400, { error: "缺少玩家資料" });
     if (deviceId) for (const [id, player] of players) if (id !== playerId && player.deviceId === deviceId) players.delete(id);
-    players.set(playerId, { id: playerId, deviceId, name, seenAt: Date.now() });
+    players.set(playerId, { id: playerId, deviceId, name, accountId: account?.id || null, seenAt: Date.now() });
     cleanupLobby();
     for (const room of rooms.values()) ensureRoomLaunched(room);
     const incomingInvites = [...invites.values()].filter((invite) => invite.toId === playerId && invite.status === "pending");
@@ -577,6 +697,7 @@ async function handleApi(req, res, url) {
 
   if (req.method === "POST" && url.pathname === "/api/invite") {
     const body = await readJson(req);
+    const account = await accountFromRequest(req);
     const bestOf = Number(body.bestOf) === 5 ? 5 : 3;
     const inviterColor = body.inviterColor === "white" ? WHITE : BLACK;
     const gameType = ROOM_GAME_TYPES.has(body.gameType) ? body.gameType : "gomoku";
@@ -585,32 +706,37 @@ async function handleApi(req, res, url) {
     const maxPlayers = allowedPlayers.includes(requestedPlayers) ? requestedPlayers : allowedPlayers.at(-1);
     const turnTimeMinutes = TURN_TIME_OPTIONS.has(Number(body.turnTimeMinutes)) ? Number(body.turnTimeMinutes) : 3;
     const roomPassword = normalizeRoomPassword(body.password);
+    const wager = maxPlayers === 2 ? safeWager(body.wager) : 0;
     const from = players.get(body.fromId);
     const to = players.get(body.toId);
     if (!from || !to) return sendJson(res, 404, { error: "對方已離開大廳" });
+    if (wager && (!account || from.accountId !== account.id)) return sendJson(res, 401, { error: "下注邀請需要先登入" });
+    if (wager && !canAffordWager(account.id, wager)) return sendJson(res, 409, { error: "織音幣餘額不足" });
     if (from.id === to.id) return sendJson(res, 400, { error: "不能邀請自己" });
     if (activeGameFor(from.id) || activeGameFor(to.id)) return sendJson(res, 409, { error: "其中一位玩家正在對局中" });
     const existing = [...invites.values()].find((invite) => invite.fromId === from.id && invite.toId === to.id && invite.gameType === gameType && invite.status === "pending");
     if (existing) return sendJson(res, 200, { invite: existing });
-    let room = [...rooms.values()].filter((candidate) => candidate.gameType === gameType && candidate.maxPlayers === maxPlayers && candidate.players[0]?.id === from.id && candidate.players.length < candidate.maxPlayers && !candidate.aiFill && ["waiting", "ready"].includes(candidate.status) && Boolean(candidate.passwordHash) === Boolean(roomPassword) && verifyRoomPassword(candidate, roomPassword)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    let room = [...rooms.values()].filter((candidate) => candidate.gameType === gameType && candidate.maxPlayers === maxPlayers && candidate.wager === wager && candidate.players[0]?.id === from.id && candidate.players.length < candidate.maxPlayers && !candidate.aiFill && ["waiting", "ready"].includes(candidate.status) && Boolean(candidate.passwordHash) === Boolean(roomPassword) && verifyRoomPassword(candidate, roomPassword)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
     if (!room || maxPlayers === 2 && [...invites.values()].some((pending) => pending.roomId === room.id && pending.status === "pending")) {
       room = createRoomRecord({
         gameType,
         name: `${from.name}的${gameType === "gomoku" ? "五子棋" : gameType === "xiangqi" ? "象棋" : "邀請局"}`.slice(0, 16),
         maxPlayers,
-        host: { id: from.id, deviceId: from.deviceId || "", name: from.name },
+        host: { id: from.id, deviceId: from.deviceId || "", name: from.name, accountId: from.accountId || null },
         matchConfig: DUEL_ROOM_TYPES.has(gameType) ? { bestOf, inviterColor: inviterColor === WHITE ? "white" : "black", turnTimeMinutes } : null,
-        password: roomPassword
+        password: roomPassword,
+        wager
       });
       rooms.set(room.id, room);
     }
-    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, roomId: room.id, hasPassword: Boolean(room.passwordHash), status: "pending", createdAt: Date.now() };
+    const invite = { id: randomUUID(), fromId: from.id, fromName: from.name, toId: to.id, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, wager, roomId: room.id, hasPassword: Boolean(room.passwordHash), status: "pending", createdAt: Date.now() };
     invites.set(invite.id, invite);
     return sendJson(res, 201, { invite });
   }
 
   if (req.method === "POST" && url.pathname === "/api/invite/respond") {
     const body = await readJson(req);
+    const account = await accountFromRequest(req);
     const invite = invites.get(body.inviteId);
     if (!invite) return sendJson(res, 404, { error: "邀請已失效" });
     if (invite.toId !== body.playerId) return sendJson(res, 403, { error: "無法回覆這個邀請" });
@@ -635,7 +761,9 @@ async function handleApi(req, res, url) {
     if (!room.players.some((player) => player.id === to.id)) {
       if (!verifyRoomPassword(room, body.password)) return sendJson(res, 401, { error: "房間密碼不正確" });
       if (room.players.length >= room.maxPlayers) return sendJson(res, 409, { error: "邀請房間已滿" });
-      room.players.push({ id: to.id, deviceId: to.deviceId || "", name: to.name });
+      if (room.wager && (!account || to.accountId !== account.id)) return sendJson(res, 401, { error: "下注邀請需要先登入才能接受" });
+      if (room.wager && !canAffordWager(account.id, room.wager)) return sendJson(res, 409, { error: "織音幣餘額不足" });
+      room.players.push({ id: to.id, deviceId: to.deviceId || "", name: to.name, accountId: account?.id || null });
     }
     room.status = room.players.length >= room.maxPlayers ? "full" : "waiting";
     room.updatedAt = Date.now();
@@ -650,6 +778,7 @@ async function handleApi(req, res, url) {
     if (!game) return sendJson(res, 404, { error: "找不到這場對局" });
     if (!game.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這場對局中" });
     applyExpiredTurn(game);
+    await settleDuelRoom(game);
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -675,6 +804,7 @@ async function handleApi(req, res, url) {
       if (!Number.isInteger(index) || index < 0 || index >= BOARD_SIZE * BOARD_SIZE || game.board[index]) return sendJson(res, 400, { error: "這個位置不能落子" });
       applyGameMove(game, index, player.color);
     }
+    await settleDuelRoom(game);
     return sendJson(res, 200, publicGame(game));
   }
 
@@ -736,6 +866,8 @@ async function handleApi(req, res, url) {
       game.revision += 1;
       game.updatedAt = Date.now();
       game.turnStartedAt = null;
+      const room = [...rooms.values()].find((candidate) => candidate.gameId === game.id);
+      if (room) await settleRoomWager(room, room.players.findIndex((item) => item.id !== player.id));
     }
     return sendJson(res, 200, publicGame(game));
   }
@@ -752,7 +884,7 @@ export function startStaticServer({ preferredPort = 5173, host = "127.0.0.1", ro
           res.writeHead(204, {
             "access-control-allow-origin": process.env.ALLOWED_ORIGIN || "*",
             "access-control-allow-methods": "GET, POST, OPTIONS",
-            "access-control-allow-headers": "content-type",
+            "access-control-allow-headers": "content-type, authorization",
             "access-control-max-age": "86400"
           });
           res.end();
