@@ -14,6 +14,7 @@ let remoteAccountsAvailable = remoteAccountsEnabled;
 const sessions = new Map();
 let database = { accounts: [] };
 let loaded = false;
+let remoteSeedRequired = false;
 
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -115,6 +116,7 @@ async function load() {
         database = { accounts: rows.map(accountFromRemote) };
         return;
       }
+      remoteSeedRequired = true;
     } catch (error) {
       remoteAccountsAvailable = false;
       console.error("Unable to read Supabase account data; using local fallback:", error.message);
@@ -126,6 +128,7 @@ async function load() {
   } catch (error) {
     if (error.code !== "ENOENT") console.error("Unable to read account data:", error.message);
   }
+  if (remoteSeedRequired && database.accounts.length) await persist();
 }
 
 async function persist() {
