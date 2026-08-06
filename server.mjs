@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
-import { accountFromRequest, accountLedger, adjustAccountBalance, beginAiGame, canAffordWager, changeAccountPassword, deleteAccountForAdmin, finishAiGame, isAdministrator, listAccountsForAdmin, loginAccount, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
+import { accountFromRequest, accountLedger, adjustAccountBalance, beginAiGame, canAffordWager, changeAccountPassword, claimCheckin, claimProgressReward, deleteAccountForAdmin, finishAiGame, isAdministrator, listAccountsForAdmin, loginAccount, playerProgress, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
 
 const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
@@ -607,6 +607,15 @@ async function handleApi(req, res, url) {
     const account = await accountFromRequest(req);
     if (!account) return sendJson(res, 401, { error: "請先登入" });
     return sendJson(res, 200, await accountLedger(account));
+  }
+  if (req.method === "GET" && url.pathname === "/api/account/progress") {
+    const account = await accountFromRequest(req); if (!account) return sendJson(res,401,{error:"請先登入"}); return sendJson(res,200,await playerProgress(account));
+  }
+  if (req.method === "POST" && url.pathname === "/api/account/checkin") {
+    const account = await accountFromRequest(req); if (!account) return sendJson(res,401,{error:"請先登入"}); try { return sendJson(res,200,await claimCheckin(account)); } catch(error) { return sendJson(res,400,{error:error.message}); }
+  }
+  if (req.method === "POST" && url.pathname === "/api/account/progress/claim") {
+    const account = await accountFromRequest(req); if (!account) return sendJson(res,401,{error:"請先登入"}); try { const body=await readJson(req); return sendJson(res,200,await claimProgressReward(account,body.type,body.id)); } catch(error) { return sendJson(res,400,{error:error.message}); }
   }
 
   if (req.method === "GET" && url.pathname === "/api/admin/accounts") {
