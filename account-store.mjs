@@ -10,6 +10,7 @@ const dataPath = process.env.ACCOUNT_DATA_PATH || join(process.cwd(), "data", "a
 const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseSecret = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const remoteAccountsEnabled = Boolean(supabaseUrl && supabaseSecret);
+const adminUsernameKey = normalizeUsername(process.env.ADMIN_USERNAME || "nextdoorboy");
 let remoteAccountsAvailable = remoteAccountsEnabled;
 const sessions = new Map();
 let database = { accounts: [] };
@@ -96,6 +97,17 @@ function publicAccount(account, bonus = 0) {
     balance: account.balance,
     dailyClaimedToday: account.lastDailyBonusDay === taipeiDay(),
     bonus
+  };
+}
+
+function adminAccount(account) {
+  return {
+    id: account.id,
+    username: account.username,
+    displayName: account.displayName,
+    balance: account.balance,
+    createdAt: account.createdAt,
+    updatedAt: account.updatedAt
   };
 }
 
@@ -273,6 +285,42 @@ export async function settleWager(winnerId, loserId, amount, metadata = {}) {
 
 export async function accountLedger(account) {
   return { account: publicAccount(account), ledger: account.ledger || [] };
+}
+
+export function isAdministrator(account) {
+  return Boolean(account && adminUsernameKey && account.usernameKey === adminUsernameKey);
+}
+
+export async function listAccountsForAdmin() {
+  await load();
+  return database.accounts.map(adminAccount).sort((a, b) => b.updatedAt - a.updatedAt);
+}
+
+export async function adjustAccountBalance(targetId, amount, reason = "admin_adjustment") {
+  await load();
+  const delta = Number(amount);
+  if (!Number.isInteger(delta) || !delta || Math.abs(delta) > 1_000_000) throw new Error("調整金額需為非零整數，單次上限 1,000,000");
+  const target = database.accounts.find((item) => item.id === String(targetId || ""));
+  if (!target) throw new Error("找不到帳號");
+  if (target.balance + delta < 0) throw new Error("調整後織音幣不可小於 0");
+  addLedger(target, delta, String(reason || "admin_adjustment").slice(0, 60), { source: "admin" });
+  target.updatedAt = Date.now();
+  await persist();
+  return publicAccount(target);
+}
+
+export async function deleteAccountForAdmin(targetId, adminId) {
+  await load();
+  const index = database.accounts.findIndex((item) => item.id === String(targetId || ""));
+  if (index < 0) throw new Error("找不到帳號");
+  if (database.accounts[index].id === adminId) throw new Error("不可刪除目前登入的管理員帳號");
+  const target = database.accounts[index];
+  if (remoteAccountsAvailable) {
+    await supabaseRequest(`game_accounts?id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE", headers: { prefer: "return=minimal" } });
+  }
+  database.accounts.splice(index, 1);
+  if (!remoteAccountsAvailable) await persist();
+  return adminAccount(target);
 }
 
 export const ECONOMY = { STARTING_BALANCE, DAILY_BONUS, AI_WIN_BONUS, MAX_WAGER };

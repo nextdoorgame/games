@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
-import { accountFromRequest, accountLedger, beginAiGame, canAffordWager, changeAccountPassword, finishAiGame, loginAccount, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
+import { accountFromRequest, accountLedger, adjustAccountBalance, beginAiGame, canAffordWager, changeAccountPassword, deleteAccountForAdmin, finishAiGame, isAdministrator, listAccountsForAdmin, loginAccount, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
 
 const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
@@ -52,7 +52,7 @@ function sendJson(res, status, body) {
     "content-type": "application/json; charset=utf-8",
     "cache-control": "no-store",
     "access-control-allow-origin": process.env.ALLOWED_ORIGIN || "*",
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
     "access-control-allow-headers": "content-type, authorization"
   });
   res.end(JSON.stringify(body));
@@ -607,6 +607,33 @@ async function handleApi(req, res, url) {
     const account = await accountFromRequest(req);
     if (!account) return sendJson(res, 401, { error: "請先登入" });
     return sendJson(res, 200, await accountLedger(account));
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/accounts") {
+    const account = await accountFromRequest(req);
+    if (!isAdministrator(account)) return sendJson(res, 403, { error: "需要管理員權限" });
+    return sendJson(res, 200, { accounts: await listAccountsForAdmin() });
+  }
+
+  const adminCoinMatch = url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)\/coins$/);
+  if (req.method === "POST" && adminCoinMatch) {
+    const account = await accountFromRequest(req);
+    if (!isAdministrator(account)) return sendJson(res, 403, { error: "需要管理員權限" });
+    try {
+      const body = await readJson(req);
+      const updated = await adjustAccountBalance(decodeURIComponent(adminCoinMatch[1]), body.amount, body.reason);
+      return sendJson(res, 200, { account: updated });
+    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+  }
+
+  const adminDeleteMatch = url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)$/);
+  if (req.method === "DELETE" && adminDeleteMatch) {
+    const account = await accountFromRequest(req);
+    if (!isAdministrator(account)) return sendJson(res, 403, { error: "需要管理員權限" });
+    try {
+      const deleted = await deleteAccountForAdmin(decodeURIComponent(adminDeleteMatch[1]), account.id);
+      return sendJson(res, 200, { deleted });
+    } catch (error) { return sendJson(res, 400, { error: error.message }); }
   }
 
   if (req.method === "POST" && url.pathname === "/api/account/game-start") {
