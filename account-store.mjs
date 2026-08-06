@@ -7,9 +7,62 @@ const DAILY_BONUS = 1_000;
 const AI_WIN_BONUS = 2_000;
 const MAX_WAGER = 5_000;
 const dataPath = process.env.ACCOUNT_DATA_PATH || join(process.cwd(), "data", "accounts.json");
+const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
+const supabaseSecret = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "");
+const remoteAccountsEnabled = Boolean(supabaseUrl && supabaseSecret);
+let remoteAccountsAvailable = remoteAccountsEnabled;
 const sessions = new Map();
 let database = { accounts: [] };
 let loaded = false;
+
+async function supabaseRequest(path, options = {}) {
+  const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: supabaseSecret,
+      authorization: `Bearer ${supabaseSecret}`,
+      "content-type": "application/json",
+      ...(options.headers || {})
+    }
+  });
+  if (!response.ok) throw new Error(`Supabase ${response.status}: ${await response.text()}`);
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+function accountFromRemote(row) {
+  return {
+    id: row.id,
+    username: row.username,
+    usernameKey: row.username_key,
+    displayName: row.display_name,
+    passwordSalt: row.password_salt,
+    passwordHash: row.password_hash,
+    balance: row.balance,
+    lastDailyBonusDay: row.last_daily_bonus_day || null,
+    ledger: [],
+    aiGames: row.ai_games || {},
+    createdAt: Date.parse(row.created_at) || Date.now(),
+    updatedAt: Date.parse(row.updated_at) || Date.now()
+  };
+}
+
+function accountForRemote(account) {
+  return {
+    id: account.id,
+    username: account.username,
+    username_key: account.usernameKey,
+    display_name: account.displayName,
+    password_salt: account.passwordSalt,
+    password_hash: account.passwordHash,
+    balance: account.balance,
+    last_daily_bonus_day: account.lastDailyBonusDay || null,
+    ai_games: account.aiGames || {},
+    created_at: new Date(account.createdAt || Date.now()).toISOString(),
+    updated_at: new Date(account.updatedAt || Date.now()).toISOString()
+  };
+}
 
 function taipeiDay() {
   return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Taipei", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
@@ -55,6 +108,18 @@ function addLedger(account, amount, reason, metadata = {}) {
 async function load() {
   if (loaded) return;
   loaded = true;
+  if (remoteAccountsEnabled) {
+    try {
+      const rows = await supabaseRequest("game_accounts?select=*&order=created_at.asc");
+      if (Array.isArray(rows) && rows.length) {
+        database = { accounts: rows.map(accountFromRemote) };
+        return;
+      }
+    } catch (error) {
+      remoteAccountsAvailable = false;
+      console.error("Unable to read Supabase account data; using local fallback:", error.message);
+    }
+  }
   try {
     const parsed = JSON.parse(await readFile(dataPath, "utf8"));
     if (Array.isArray(parsed.accounts)) database = parsed;
@@ -64,6 +129,19 @@ async function load() {
 }
 
 async function persist() {
+  if (remoteAccountsAvailable) {
+    try {
+      await supabaseRequest("game_accounts?on_conflict=id", {
+        method: "POST",
+        headers: { prefer: "resolution=merge-duplicates,return=minimal" },
+        body: JSON.stringify(database.accounts.map(accountForRemote))
+      });
+      return;
+    } catch (error) {
+      remoteAccountsAvailable = false;
+      console.error("Unable to write Supabase account data; using local fallback:", error.message);
+    }
+  }
   await mkdir(dirname(dataPath), { recursive: true });
   const tempPath = `${dataPath}.${randomBytes(6).toString("hex")}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(database, null, 2)}\n`, { mode: 0o600 });
