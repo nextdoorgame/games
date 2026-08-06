@@ -27,7 +27,7 @@ jobs:
       - name: Prepare static site
         run: |
           mkdir -p _site/src _site/vendor _site/assets
-          cp index.html config.js .nojekyll _site/
+          cp index.html admin.html config.js .nojekyll _site/
           cp -R src/. _site/src/
           cp -R vendor/. _site/vendor/
           cp -R assets/. _site/assets/
