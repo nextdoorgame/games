@@ -1060,7 +1060,7 @@ export function startStaticServer({ preferredPort = 5173, host = "127.0.0.1", ro
         if (req.method === "OPTIONS") {
           res.writeHead(204, {
             "access-control-allow-origin": process.env.ALLOWED_ORIGIN || "*",
-            "access-control-allow-methods": "GET, POST, OPTIONS",
+            "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
             "access-control-allow-headers": "content-type, authorization",
             "access-control-max-age": "86400"
           });
