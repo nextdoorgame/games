@@ -2,7 +2,7 @@ const SUITS=["♦","♣","♥","♠"];
 const RANKS=["3","4","5","6","7","8","9","10","J","Q","K","A","2"];
 export function createDeck(){const deck=[];RANKS.forEach((rank,r)=>SUITS.forEach((suit,s)=>deck.push({id:`${rank}${suit}`,rank,suit,value:r,suitValue:s})));for(let i=deck.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[deck[i],deck[j]]=[deck[j],deck[i]];}return deck;}
 export const sortCards=(cards)=>[...cards].sort((a,b)=>a.value-b.value||a.suitValue-b.suitValue);
-export function dealBigTwo(players=4){const deck=createDeck(),hands=Array.from({length:players},()=>[]);while(deck.length%players){let index=deck.length-1;if(deck[index].rank==="3"&&deck[index].suit==="♦")index--;deck.splice(index,1);}deck.forEach((card,index)=>hands[index%players].push(card));hands.forEach((hand,index)=>hands[index]=sortCards(hand));let turn=0;hands.forEach((hand,index)=>{if(hand.some((card)=>card.rank==="3"&&card.suit==="♦"))turn=index;});return{hands,turn,leader:turn,lastPlay:null,passes:0,winner:null,history:[],firstTrick:true};}
+export function dealBigTwo(players=4){const deck=createDeck(),hands=Array.from({length:players},()=>[]);while(deck.length%players){let index=deck.length-1;if(deck[index].rank==="3"&&deck[index].suit==="♣")index--;deck.splice(index,1);}deck.forEach((card,index)=>hands[index%players].push(card));hands.forEach((hand,index)=>hands[index]=sortCards(hand));let turn=0;hands.forEach((hand,index)=>{if(hand.some((card)=>card.rank==="3"&&card.suit==="♣"))turn=index;});return{hands,turn,leader:turn,lastPlay:null,passes:0,winner:null,history:[],firstTrick:true};}
 function highest(cards){return [...cards].sort((a,b)=>b.value-a.value||b.suitValue-a.suitValue)[0];}
 function straightHigh(values){const unique=[...new Set(values)].sort((a,b)=>a-b);if(unique.length!==5||unique.includes(12))return null;if(unique[4]-unique[0]===4)return unique[4];return null;}
 export function classifyBigTwo(cards){
@@ -19,7 +19,7 @@ export function classifyBigTwo(cards){
   if(straight!==null)return{size:5,type:1,score:straight*4+highest(cards.filter((c)=>c.value===straight)).suitValue};
   return null;
 }
-export function canPlayBigTwo(cards,lastPlay,firstTrick=false){const combo=classifyBigTwo(cards);if(!combo)return false;if(firstTrick&&!cards.some((c)=>c.rank==="3"&&c.suit==="♦"))return false;if(!lastPlay)return true;const previous=classifyBigTwo(lastPlay.cards);return combo.size===previous.size&&(combo.type>previous.type||(combo.type===previous.type&&combo.score>previous.score));}
+export function canPlayBigTwo(cards,lastPlay,firstTrick=false){const combo=classifyBigTwo(cards);if(!combo)return false;if(firstTrick&&!cards.some((c)=>c.rank==="3"&&c.suit==="♣"))return false;if(!lastPlay)return true;const previous=classifyBigTwo(lastPlay.cards);return combo.size===previous.size&&(combo.type>previous.type||(combo.type===previous.type&&combo.score>previous.score));}
 export function playBigTwo(state,player,cardIds){
   if(state.winner!==null||state.turn!==player)return state;const cards=state.hands[player].filter((card)=>cardIds.includes(card.id));if(!canPlayBigTwo(cards,state.lastPlay,state.firstTrick))return state;
   const next={...state,hands:state.hands.map((hand)=>[...hand]),history:[...state.history]};next.hands[player]=next.hands[player].filter((card)=>!cardIds.includes(card.id));next.lastPlay={player,cards};next.history.push(next.lastPlay);next.leader=player;next.passes=0;next.firstTrick=false;if(!next.hands[player].length)next.winner=player;else next.turn=(player+1)%next.hands.length;return next;
