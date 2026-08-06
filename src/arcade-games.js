@@ -9,7 +9,7 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 export function createVolleyballState() {
   const game = {
     type: "volleyball",
-    players: [{ x: 145, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, diveFrames: 0 }, { x: 655, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, diveFrames: 0 }],
+    players: [{ x: 145, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, attackBuffer: 0, diveFrames: 0, diveHitFrames: 0 }, { x: 655, y: VOLLEY_PLAYER_Y, vx: 0, vy: 0, score: 0, attackFrames: 0, attackBuffer: 0, diveFrames: 0, diveHitFrames: 0 }],
     ball: { x: 145, y: VOLLEY_PLAYER_Y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 },
     winner: null,
     serving: 0,
@@ -25,7 +25,7 @@ function resetVolleyRound(game, serving) {
   game.serving = serving;
   game.players[0].x = 145; game.players[0].y = VOLLEY_PLAYER_Y; game.players[0].vx = 0; game.players[0].vy = 0;
   game.players[1].x = 655; game.players[1].y = VOLLEY_PLAYER_Y; game.players[1].vx = 0; game.players[1].vy = 0;
-  game.players.forEach((player) => { player.attackFrames = 0; player.diveFrames = 0; player.actionHeld = false; player.diveDirection = 0; });
+  game.players.forEach((player) => { player.attackFrames = 0; player.attackBuffer = 0; player.diveFrames = 0; player.diveHitFrames = 0; player.actionHeld = false; player.diveDirection = 0; });
   const server = game.players[serving];
   game.ball = { x: server.x, y: server.y - VOLLEY_SERVE_HEIGHT, vx: 0, vy: 0 };
   game.roundDelay = 0;
@@ -65,29 +65,37 @@ function updateVolleyPlayer(game, index, input) {
   const grounded = player.y >= VOLLEY_PLAYER_Y - 1;
   const actionPressed = Boolean(input.action) && !player.actionHeld;
   player.actionHeld = Boolean(input.action);
-  if (actionPressed && !grounded) player.attackFrames = 10;
-  if (actionPressed && grounded && (input.left || input.right)) {
-    player.diveFrames = 16;
+  if (actionPressed && grounded && (input.left || input.right || input.down)) {
+    player.diveFrames = 24;
+    player.diveHitFrames = 20;
     player.diveDirection = input.left ? -1 : 1;
-    player.vy = -3.1;
+    player.vy = -4.7;
+  } else if (actionPressed) {
+    // Network input is often received a few frames before the jump actually
+    // leaves the floor. Buffer it so both players can reliably jump-and-spike.
+    player.attackBuffer = 14;
   }
   if (player.diveFrames > 0) {
     player.diveFrames -= 1;
-    player.vx = player.diveDirection * (2.8 + player.diveFrames * .26);
+    player.vx = player.diveDirection * (3.4 + player.diveFrames * .3);
   } else player.vx = input.left ? -4.5 : input.right ? 4.5 : player.vx * .72;
   player.x = clamp(player.x + player.vx, minX, maxX);
   if (input.up && grounded && player.diveFrames <= 0) player.vy = -12.8;
   player.vy += .57; player.y += player.vy;
   if (player.y > 332) { player.y = 332; player.vy = 0; }
+  if (player.attackBuffer > 0) player.attackBuffer -= 1;
+  if (player.attackBuffer > 0 && player.y < VOLLEY_PLAYER_Y - 5) { player.attackFrames = 12; player.attackBuffer = 0; }
+  if (player.diveHitFrames > 0) player.diveHitFrames -= 1;
   if (player.attackFrames > 0) player.attackFrames -= 1;
 }
 
 function collideVolleyPlayer(game, index, input) {
   const player = game.players[index], ball = game.ball;
-  const px = player.x, py = player.y + 22;
+  const diving = player.diveHitFrames > 0;
+  const px = player.x + (diving ? player.diveDirection * 24 : 0), py = player.y + (diving ? 32 : 22);
   const dx = ball.x - px, dy = ball.y - py;
   const distance = Math.hypot(dx, dy);
-  if (distance >= 55 || distance === 0) return;
+  if (distance >= (diving ? 76 : 55) || distance === 0) return;
   const airborne = player.y < VOLLEY_PLAYER_Y - 5;
   if (player.attackFrames > 0 && airborne) {
     const facing = index === 0 ? 1 : -1;
@@ -111,12 +119,13 @@ function collideVolleyPlayer(game, index, input) {
     player.attackFrames = 0;
     return;
   }
-  const impactOffset = clamp(dx / 55, -1, 1);
-  ball.vx = impactOffset * 6.8 + player.vx * .42;
+  const impactOffset = clamp(dx / (diving ? 76 : 55), -1, 1);
+  ball.vx = impactOffset * (diving ? 8.2 : 6.8) + player.vx * .52;
   if (Math.abs(ball.vx) < .8) ball.vx = (index === 0 ? 1 : -1) * .8;
-  ball.vy = -clamp(Math.abs(ball.vy) * .92 + 1.8, 6.6, 10.8);
-  ball.x = px + dx / distance * 56;
-  ball.y = py + dy / distance * 56;
+  ball.vy = -clamp(Math.abs(ball.vy) * (diving ? 1.05 : .92) + (diving ? 2.8 : 1.8), 6.6, 12.5);
+  ball.x = px + dx / distance * (diving ? 77 : 56);
+  ball.y = py + dy / distance * (diving ? 77 : 56);
+  if (diving) game.lastSave = { player: index, frame: game.frame };
 }
 
 export function updateVolleyball(game, firstInput, secondInput, useAi = false) {

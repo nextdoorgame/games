@@ -17,7 +17,7 @@ function reconcilePlayer(predicted = {}, authoritative = {}, localPlayer = false
     // predicted movement so an older host snapshot cannot pull the sprite
     // backwards; scores, lives, power-ups and other outcomes remain authoritative.
     const next = { ...authoritative };
-    for (const key of ["x", "y", "vx", "vy", "attackFrames", "diveFrames", "diveDirection", "actionHeld"]) {
+    for (const key of ["x", "y", "vx", "vy", "attackFrames", "attackBuffer", "diveFrames", "diveHitFrames", "diveDirection", "actionHeld"]) {
       if (predicted[key] !== undefined) next[key] = predicted[key];
     }
     return next;

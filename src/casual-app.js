@@ -913,17 +913,18 @@ function arcadeSocketUrl(roomId) {
   return url.toString();
 }
 
-function connectVolleyballSocket() {
-  if (typeof WebSocket === "undefined" || state?.game !== "volleyball" || !state.room || !ROOM_API || arcadeSocket) return;
+function connectArcadeSocket() {
+  if (typeof WebSocket === "undefined" || !isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSocket) return;
+  const gameType = state.game;
   const roomId = state.room.id;
   const socket = new WebSocket(arcadeSocketUrl(roomId));
   arcadeSocket = socket;
   socket.addEventListener("open", () => {
-    if (arcadeSocket !== socket || state?.game !== "volleyball" || state.room?.id !== roomId) return socket.close();
+    if (arcadeSocket !== socket || state?.game !== gameType || state.room?.id !== roomId) return socket.close();
     clearTimeout(arcadeSyncTimer);
     arcadeSyncTimer = null;
     arcadeSocketRetry = 0;
-    sendVolleyballSocketFrame(true);
+    sendArcadeSocketFrame(true);
   });
   socket.addEventListener("message", (event) => {
     if (arcadeSocket !== socket) return;
@@ -938,17 +939,17 @@ function connectVolleyballSocket() {
   socket.addEventListener("close", () => {
     if (arcadeSocket !== socket) return;
     arcadeSocket = null;
-    if (state?.game !== "volleyball" || state.room?.id !== roomId) return;
+    if (state?.game !== gameType || state.room?.id !== roomId) return;
     if (!arcadeSyncInFlight) arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
     const retryDelay = Math.min(4_000, 400 * (2 ** Math.min(3, arcadeSocketRetry)));
     arcadeSocketRetry += 1;
-    arcadeSocketReconnectTimer = setTimeout(connectVolleyballSocket, retryDelay);
+    arcadeSocketReconnectTimer = setTimeout(connectArcadeSocket, retryDelay);
   });
   socket.addEventListener("error", () => socket.close());
 }
 
-function sendVolleyballSocketFrame(force = false) {
-  if (!arcadeSocketIsOpen() || state?.game !== "volleyball" || !state.room || arcadeSocket.bufferedAmount > 64 * 1024) return;
+function sendArcadeSocketFrame(force = false) {
+  if (!arcadeSocketIsOpen() || !isArcadeGame(state?.game) || !state.room || arcadeSocket.bufferedAmount > 64 * 1024) return;
   const input = arcadeInput(0);
   const inputKey = JSON.stringify(input);
   const now = performance.now();
@@ -974,7 +975,7 @@ function arcadeLoop() {
     else if (state.game === "racing") updateRacing(state.engine, firstInput, secondInput, useAi);
     else updateBrickBreaker(state.engine, firstInput, secondInput, useAi && state.engine.mode !== "classic");
   }
-  if (state.game === "volleyball" && state.room) sendVolleyballSocketFrame();
+  if (state.room) sendArcadeSocketFrame();
   arcadeCanvasDraw();
   if (state.engine.frame % 10 === 0 || state.engine.winner !== null) renderArcadeStatus();
   arcadeFrame = requestAnimationFrame(arcadeLoop);
@@ -982,7 +983,7 @@ function arcadeLoop() {
 
 async function syncArcadeRoom() {
   arcadeSyncTimer = null;
-  if (!isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSyncInFlight || state.game === "volleyball" && arcadeSocketIsOpen()) return;
+  if (!isArcadeGame(state?.game) || !state.room || !ROOM_API || arcadeSyncInFlight || arcadeSocketIsOpen()) return;
   arcadeSyncInFlight = true;
   const roomId = state.room.id, gameType = state.game;
   try {
@@ -997,7 +998,7 @@ async function syncArcadeRoom() {
   } finally {
     arcadeSyncInFlight = false;
     const retryDelay = state?.syncFailures ? Math.min(1_500, 150 * (2 ** Math.min(3, state.syncFailures - 1))) : 50;
-    if (isArcadeGame(state?.game) && state.room && ROOM_API && !(state.game === "volleyball" && arcadeSocketIsOpen()) && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, retryDelay);
+    if (isArcadeGame(state?.game) && state.room && ROOM_API && !arcadeSocketIsOpen() && document.querySelector("#casualView").classList.contains("active")) arcadeSyncTimer = setTimeout(syncArcadeRoom, retryDelay);
   }
 }
 
@@ -1009,16 +1010,16 @@ function startArcadeGame(game, players, room, arcadeMode = "classic") {
   boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
   boardEl.querySelectorAll("[data-arcade]").forEach((button) => {
     const key = button.dataset.arcade;
-    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; if (key === "action") arcadeActionPulse[0] = Date.now() + 160; sendVolleyballSocketFrame(true); };
-    const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; sendVolleyballSocketFrame(true); };
+    const press = (event) => { event.preventDefault(); arcadeTouch[key] = true; if (key === "action") arcadeActionPulse[0] = Date.now() + 160; sendArcadeSocketFrame(true); };
+    const release = (event) => { event.preventDefault(); arcadeTouch[key] = false; sendArcadeSocketFrame(true); };
     button.addEventListener("pointerdown", press); button.addEventListener("pointerup", release); button.addEventListener("pointercancel", release); button.addEventListener("pointerleave", release);
   });
   rulesEl.textContent = game === "volleyball" ? (room ? "兩位玩家都在自己的裝置使用方向鍵移動、↑ 跳躍、空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋空白鍵可撲救。" : "玩家 1：方向鍵移動，空白鍵攻擊；玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。空中搭配方向可改變殺球角度。") : game === "racing" ? (room ? "兩位玩家都在自己的裝置使用方向鍵操作。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久。") : engine.mode === "classic" ? "使用 ←／→ 移動板子；開局與掉球後按空白鍵發球，球運行時按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : room ? "兩位玩家都在自己的裝置使用 ←／→ 移動、空白鍵發球／衝刺；合作模式共用生命，對戰模式先清空自己半場。" : "P1 使用 ←／→ 移動、空白鍵發球／衝刺；P2 使用 A／D 移動、F 或 Enter 發球／衝刺。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
   if (room && ROOM_API) {
-    if (game === "volleyball" && typeof WebSocket !== "undefined") {
-      connectVolleyballSocket();
+    if (typeof WebSocket !== "undefined") {
+      connectArcadeSocket();
       arcadeSyncTimer = setTimeout(syncArcadeRoom, 800);
     } else arcadeSyncTimer = setTimeout(syncArcadeRoom, 0);
   }
@@ -1030,11 +1031,11 @@ window.addEventListener("keydown", (event) => {
     event.preventDefault(); arcadeKeys[event.code] = true;
     if (event.code === "Space") arcadeActionPulse[0] = Date.now() + 160;
     if (["KeyF", "Enter"].includes(event.code)) arcadeActionPulse[1] = Date.now() + 160;
-    sendVolleyballSocketFrame(true);
+    sendArcadeSocketFrame(true);
   }
   if (event.code === "KeyP") { event.preventDefault(); state.arcadePaused = !state.arcadePaused; primary.textContent = state.arcadePaused ? "繼續遊戲" : "暫停遊戲"; renderArcadeStatus(); }
 });
-window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; sendVolleyballSocketFrame(true); } });
+window.addEventListener("keyup", (event) => { if (arcadeKeys[event.code]) { event.preventDefault(); arcadeKeys[event.code] = false; sendArcadeSocketFrame(true); } });
 
 primary.addEventListener("click",()=>{if(isArcadeGame(state?.game)){state.arcadePaused=!state.arcadePaused;primary.textContent=state.arcadePaused?"繼續遊戲":"暫停遊戲";renderArcadeStatus();}else if(state?.game==="tetris"){if(state.startCountdownAt>Date.now())return;state.engine.paused=!state.engine.paused;renderTetris();}else if(state?.game==="mahjong"&&canControlMahjongSeat()){if(isMahjongWin(state.hands[state.turn])){state.winner=state.turn;renderMahjong();commitTableState();}else toast("目前牌型尚未完成四組面子加一對將");}else if(state?.game==="bigtwo")humanBigTwoPlay();else if(state?.game==="blackjack")humanBlackjackHit();else if(state?.game==="ninetynine")humanNinetyNine();});
 pass.addEventListener("click",()=>{if(state?.game==="bigtwo"){if(!canControlTableSeat())return;const next=passBigTwo(state,state.turn);if(next===state){toast("你是本輪領先者，不能過牌");return;}state=next;selected.clear();renderBigTwo();commitTableState();queueTableAi(aiBigTwo,420);}else if(state?.game==="blackjack")humanBlackjackStand();else if(state?.game==="go")passGo();});

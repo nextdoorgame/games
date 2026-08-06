@@ -16,12 +16,14 @@ function drawCloud(ctx, x, y, scale = 1) {
 function drawMouse(ctx, player, facing, action = false) {
   const x = Math.round(player.x), y = Math.round(player.y); ctx.save();
   if (facing < 0) { ctx.translate(x * 2, 0); ctx.scale(-1, 1); }
+  if (player.diveFrames > 0) { ctx.translate(x, y + 20); ctx.rotate((player.diveDirection || 1) * .28); ctx.translate(-x, -y - 20); }
   if (player.invulnerable && Math.floor(player.invulnerable / 5) % 2) ctx.globalAlpha = .35;
   ctx.fillStyle = "#2f291d"; ctx.fillRect(x - 20, y - 16, 12, 22); ctx.fillRect(x + 8, y - 20, 12, 25);
   ctx.fillStyle = "#f4c62d"; ctx.fillRect(x - 18, y - 10, 37, 45); ctx.fillRect(x - 25, y + 4, 52, 35); ctx.fillRect(x - 11, y - 30, 10, 25); ctx.fillRect(x + 9, y - 34, 10, 29);
-  ctx.fillStyle = "#29241b"; ctx.fillRect(x - 11, y - 29, 10, 9); ctx.fillRect(x + 9, y - 33, 10, 9); ctx.fillRect(x + 3, y + 1, 5, 7);
+  ctx.fillStyle = "#29241b"; ctx.fillRect(x - 11, y - 29, 10, 9); ctx.fillRect(x + 9, y - 33, 10, 9); ctx.fillRect(x - 7, y - 7, 8, 8); ctx.fillRect(x + 10, y - 7, 8, 8); ctx.fillRect(x + 3, y + 1, 5, 7);
+  ctx.fillStyle = "#fff"; ctx.fillRect(x - 5, y - 6, 3, 3); ctx.fillRect(x + 12, y - 6, 3, 3); ctx.fillRect(x + 4, y + 9, 4, 2);
   ctx.fillStyle = "#b63f36"; ctx.fillRect(x - 17, y + 9, 9, 8); ctx.fillRect(x + 15, y + 9, 9, 8);
-  ctx.fillStyle = "#fff"; ctx.fillRect(x - 9, y - 1, 5, 5); ctx.fillRect(x + 12, y - 1, 5, 5);
+  ctx.fillStyle = "#e95f55"; ctx.fillRect(x - 25, y + 2, 7, 8); ctx.fillRect(x + 19, y + 2, 7, 8);
   ctx.fillStyle = "#f4c62d"; ctx.fillRect(x + 25, y + 10, 14, 9); ctx.fillRect(x + 35, y - 2, 10, 12); ctx.fillRect(x + 42, y - 14, 14, 11);
   ctx.fillStyle = "#9b6d1f"; ctx.fillRect(x + 39, y - 2, 6, 5);
   ctx.fillStyle = "#d09622"; ctx.fillRect(x - 22, y + 33, 18, 7); ctx.fillRect(x + 9, y + 33, 18, 7);
