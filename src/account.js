@@ -35,6 +35,12 @@ export function currentAccount() {
   return account;
 }
 
+export function updateCurrentAccount(nextAccount) {
+  account = nextAccount || null;
+  emit();
+  return account;
+}
+
 export async function restoreSession() {
   if (!token) { emit(); return null; }
   try {

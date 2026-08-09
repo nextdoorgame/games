@@ -61,6 +61,22 @@
             <div class="welcome-table" aria-hidden="true"><i>帥</i><span></span><b></b></div>
           </div>
 
+          <section id="playerHub" class="player-hub" aria-label="玩家中心" hidden>
+            <article class="hub-card hub-wallet"><span>♪</span><div><small>我的織音幣</small><strong id="hubCoins">0</strong><em>每日簽到可累積音符獎勵</em></div></article>
+            <article class="hub-card hub-level"><div><small>玩家等級</small><strong id="hubLevel">Lv. 1</strong><em id="hubXp">0 / 100 XP</em></div><div class="xp-track"><i id="hubXpBar"></i></div></article>
+            <article class="hub-card hub-checkin"><div><small>每日簽到</small><strong id="hubCheckinTitle">今天的音符禮</strong><em id="hubCheckinDetail">登入後即可領取</em></div><button id="hubCheckinButton" type="button">簽到</button></article>
+            <article class="hub-card hub-tasks"><div><small>每日任務</small><strong id="hubTaskTitle">登入後顯示任務</strong><em id="hubTaskDetail">完成可獲得織音幣與經驗</em></div><button id="hubRewardsButton" type="button">查看</button></article>
+          </section>
+
+          <dialog id="progressDialog" class="modal progress-modal"><form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">PLAYER JOURNEY</span><h2>每日任務與成就</h2><section><h3>每日任務</h3><div id="progressTasks" class="progress-list"></div></section><section><h3>成就徽章</h3><div id="progressAchievements" class="progress-list"></div></section></form></dialog>
+
+          <section class="home-discovery" aria-label="遊戲推薦">
+            <article><small>最近遊玩</small><strong id="recentGames">登入後記錄你的遊戲足跡</strong><span>每場完成的單人遊戲會更新任務進度</span></article>
+            <article><small>熱門遊戲</small><strong>五子棋・皮卡丘排球</strong><span>快速開局，適合全家一起玩</span></article>
+            <article><small>最新遊戲</small><strong>撞球 8 號球</strong><span>單人 AI 與雙人即時出桿</span></article>
+            <article><small>家庭排行榜</small><strong id="leaderboardSummary">登入後可累積等級</strong><span>完成簽到、任務與 AI 對局升級</span></article>
+          </section>
+
           <div class="game-catalog">
             <div class="section-heading"><div><h2>選擇遊戲</h2></div><div id="gameFilters" class="game-filters" aria-label="遊戲分類"><button class="active" data-filter="all" type="button">全部</button><button data-filter="board" type="button">棋類</button><button data-filter="card" type="button">牌類</button><button data-filter="arcade" type="button">街機</button></div></div>
 
@@ -155,6 +171,11 @@
               <div class="game-card-head"><div><span class="game-emblem">▤</span><h3>隔壁打磚塊</h3></div><p>經典闖關・雙板合作・左右對戰</p></div>
               <div class="game-preview brickbreaker-preview" aria-hidden="true"><span></span><i></i><i></i><i></i><i></i><i></i><i></i><b></b><em></em></div>
               <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="brickbreaker" aria-label="開始隔壁打磚塊遊戲" type="button">開始遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="brickbreaker" aria-label="前往隔壁打磚塊房間大廳" type="button">雙人房間</button></div>
+            </article>
+            <article class="game-card pool-game-card" data-category="arcade">
+              <div class="game-card-head"><div><span class="game-emblem">8</span><h3>撞球 8 號球</h3></div><p>單人 AI・雙人即時出桿</p></div>
+              <div class="game-preview pool-preview" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+              <div class="game-card-actions"><button class="primary-button casual-solo-button" data-game-type="pool" type="button">單人遊戲</button><button class="secondary-button room-game-button" data-view="lobby" data-room-game="pool" type="button">雙人房間</button></div>
             </article>
             </div>
 
@@ -343,7 +364,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-17"></script>
-    <script type="module" src="./src/casual-app.js?v=neighbor-19"></script>
+    <script type="module" src="./src/app.js?v=neighbor-18"></script>
+    <script type="module" src="./src/casual-app.js?v=neighbor-20"></script>
   </body>
 </html>

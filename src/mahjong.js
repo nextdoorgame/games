@@ -35,7 +35,7 @@ export function dealMahjong(playerCount=4){
   const wall=createMahjongWall();const hands=Array.from({length:playerCount},()=>[]);
   for(let round=0;round<13;round++)for(let player=0;player<playerCount;player++)hands[player].push(wall.pop());
   hands[0].push(wall.pop());
-  return {wall,hands:hands.map(sortMahjongHand),turn:0,drawn:true,discards:Array.from({length:playerCount},()=>[]),winner:null};
+  return {wall,hands:hands.map(sortMahjongHand),turn:0,drawn:true,discards:Array.from({length:playerCount},()=>[]),openMelds:Array.from({length:playerCount},()=>[]),pendingDiscard:null,winner:null};
 }
 
 export function mahjongDiscardScore(hand,index){
@@ -61,6 +61,39 @@ export function drawMahjong(state,player){
 export function discardMahjong(state,player,index){
   if(state.winner!==null||state.turn!==player||!state.drawn||!state.hands[player][index])return state;
   const next={...state,hands:state.hands.map((hand)=>[...hand]),discards:state.discards.map((pile)=>[...pile])};
-  const [tile]=next.hands[player].splice(index,1);next.discards[player].push(tile);next.turn=(player+1)%next.hands.length;next.drawn=false;
+  const [tile]=next.hands[player].splice(index,1);next.discards[player].push(tile);next.turn=(player+1)%next.hands.length;next.drawn=false;next.pendingDiscard={player,tile};
+  return next;
+}
+
+export function mahjongChiOptions(state, player) {
+  const pending = state.pendingDiscard;
+  if (!pending || player !== (pending.player + 1) % state.hands.length || pending.tile.suit === "字") return [];
+  const tile = pending.tile, hand = state.hands[player] || [], options = [], seen = new Set();
+  [[tile.rank - 2, tile.rank - 1], [tile.rank - 1, tile.rank + 1], [tile.rank + 1, tile.rank + 2]].forEach((ranks) => {
+    if (ranks.some((rank) => rank < 1 || rank > 9)) return;
+    const choices = ranks.map((rank) => hand.filter((item) => item.suit === tile.suit && item.rank === rank));
+    if (choices.some((list) => !list.length)) return;
+    choices[0].forEach((first) => choices[1].forEach((second) => {
+      const ids = [first.id, second.id].sort(); const token = ids.join(",");
+      if (!seen.has(token)) { seen.add(token); options.push({ ids, tiles: [first, tile, second].sort((a, b) => a.rank - b.rank) }); }
+    }));
+  });
+  return options;
+}
+
+export function passMahjongClaim(state, player) {
+  if (!state.pendingDiscard || state.turn !== player) return state;
+  return { ...state, pendingDiscard: null };
+}
+
+export function claimMahjongChi(state, player, ids) {
+  const option = mahjongChiOptions(state, player).find((item) => item.ids.join(",") === [...ids].sort().join(","));
+  if (!option || state.winner !== null) return state;
+  const pending = state.pendingDiscard;
+  const next = { ...state, hands: state.hands.map((hand) => [...hand]), discards: state.discards.map((pile) => [...pile]), openMelds: state.openMelds.map((melds) => [...melds]) };
+  next.hands[player] = sortMahjongHand(next.hands[player].filter((tile) => !option.ids.includes(tile.id)));
+  next.discards[pending.player].pop();
+  next.openMelds[player].push(option.tiles);
+  next.pendingDiscard = null; next.turn = player; next.drawn = true;
   return next;
 }

@@ -2,7 +2,7 @@ import { shouldApplyOnlineSnapshot } from "./game-sync.js?v=neighbor-2";
 import { deviceId, playerId } from "./player-identity.js?v=neighbor-8";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
-import { authHeaders, changePassword, currentAccount, finishRewardGame, login, logout, register, restoreSession, startRewardGame } from "./account.js?v=neighbor-1";
+import { accountRequest, authHeaders, changePassword, currentAccount, finishRewardGame, login, logout, register, restoreSession, startRewardGame, updateCurrentAccount } from "./account.js?v=neighbor-2";
 
 const SIZE = 19;
 const BLACK = 1;
@@ -16,7 +16,7 @@ const ONLINE_GAME_META = {
   checkers: { name: "中國跳棋", players: [2, 3] }, mahjong: { name: "麻將", players: [2, 3, 4] }, bigtwo: { name: "大老二", players: [3, 4, 5] },
   banqi: { name: "暗棋", players: [2] }, chess: { name: "西洋棋", players: [2] }, go: { name: "圍棋", players: [2] },
   blackjack: { name: "二十一點", players: [3, 4, 5] }, pickred: { name: "撿紅點", players: [3, 4, 5] }, ninetynine: { name: "九九", players: [3, 4, 5] },
-  tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }
+  tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }, pool: { name: "撞球 8 號球", players: [2] }
 };
 const DUEL_INVITE_GAMES = new Set(["gomoku", "xiangqi"]);
 
@@ -132,6 +132,7 @@ let pendingSingleGameType = "gomoku";
 let preferredOnlineGameType = "gomoku";
 let lastActiveRoomSignal = "";
 let isLeavingGame = false;
+let progressData = null;
 
 function initials(name) {
   return [...name.trim()].slice(0, 1).join("") || "棋";
@@ -161,11 +162,49 @@ function syncAccountUi(detail = {}) {
   } else {
     els.walletBalance.textContent = "登入領取";
     els.lobbyLoginButton.textContent = "登入固定名稱";
+    document.querySelector("#playerHub").hidden = true;
   }
   updateIdentity();
   if (detail.reward) showToast(`戰勝 AI，獲得 +${formatCoins(detail.reward)} 織音幣`);
   else if (detail.bonus) showToast(`每日活動獎勵 +${formatCoins(detail.bonus)} 織音幣`);
   else if (detail.error) showToast(detail.error);
+}
+
+function renderProgress() {
+  const hub = document.querySelector("#playerHub");
+  const account = currentAccount();
+  if (!account || !progressData) { hub.hidden = true; return; }
+  hub.hidden = false;
+  const { checkin, tasks = [], achievements = [], nextLevelXp = 100 } = progressData;
+  document.querySelector("#hubCoins").textContent = formatCoins(account.balance);
+  document.querySelector("#hubLevel").textContent = `Lv. ${account.level || 1}`;
+  document.querySelector("#hubXp").textContent = `${account.xp || 0} / ${nextLevelXp} XP`;
+  document.querySelector("#hubXpBar").style.width = `${Math.min(100, ((account.xp || 0) / nextLevelXp) * 100)}%`;
+  document.querySelector("#hubCheckinTitle").textContent = checkin.claimed ? `連續第 ${checkin.streak} 天已簽到` : `連續第 ${checkin.streak || 0} 天・今天可領`;
+  document.querySelector("#hubCheckinDetail").textContent = checkin.claimed ? "明天再回來收集音符吧" : `第 ${(checkin.streak % 7) + 1 || 1} 天獎勵等你領取`;
+  const checkinButton = document.querySelector("#hubCheckinButton"); checkinButton.disabled = checkin.claimed; checkinButton.textContent = checkin.claimed ? "已簽到" : "領取";
+  const ready = tasks.filter((task) => task.progress >= task.target && !task.claimed).length;
+  document.querySelector("#hubTaskTitle").textContent = ready ? `${ready} 個任務可領獎` : `今日 ${tasks.filter((task) => task.claimed).length}/${tasks.length} 個已領取`;
+  document.querySelector("#hubTaskDetail").textContent = tasks.map((task) => `${task.label} ${task.progress}/${task.target}`).join("・") || "開始一場遊戲即可累積進度";
+  const taskList = document.querySelector("#progressTasks"), achievementList = document.querySelector("#progressAchievements");
+  taskList.innerHTML = tasks.map((item) => `<article><strong>${item.label}</strong><span>${item.progress}/${item.target}・+${formatCoins(item.reward)} ♪・${item.xp} XP</span><button data-progress-type="task" data-progress-id="${item.id}" ${item.claimed || item.progress < item.target ? "disabled" : ""}>${item.claimed ? "已領取" : "領取"}</button></article>`).join("") || "尚無任務";
+  achievementList.innerHTML = achievements.map((item) => `<article><strong>${item.label}</strong><span>+${formatCoins(item.reward)} ♪・${item.xp} XP</span><button data-progress-type="achievement" data-progress-id="${item.id}" ${item.claimed || !item.ready ? "disabled" : ""}>${item.claimed ? "已領取" : item.ready ? "領取" : "進行中"}</button></article>`).join("") || "尚無成就";
+  const gameNames = { gomoku: "五子棋", xiangqi: "中國象棋", reversi: "黑白棋", checkers: "中國跳棋", mahjong: "麻將", bigtwo: "大老二", banqi: "暗棋", chess: "西洋棋", go: "圍棋", blackjack: "二十一點", pickred: "撿紅點", ninetynine: "九九", tetris: "俄羅斯方塊", volleyball: "皮卡丘排球", racing: "賽車障礙", brickbreaker: "隔壁打磚塊", pool: "撞球 8 號球" };
+  document.querySelector("#recentGames").textContent = progressData.recentGames?.length ? progressData.recentGames.map((game) => gameNames[game] || game).join("・") : "開始第一場遊戲，留下你的足跡";
+  document.querySelector("#leaderboardSummary").textContent = `${account.displayName}・Lv. ${account.level || 1}・${formatCoins(account.balance)} ♪`;
+}
+
+async function loadProgress() {
+  if (!currentAccount() || !API_BASE) { progressData = null; renderProgress(); return; }
+  try { progressData = await accountRequest("/api/account/progress"); renderProgress(); } catch { progressData = null; renderProgress(); }
+}
+
+async function claimCheckinReward() {
+  try { const data = await accountRequest("/api/account/checkin", { method: "POST" }); progressData = data.progress; updateCurrentAccount(data.account); showToast(`簽到成功，獲得 +${formatCoins(data.reward)} 織音幣`); renderProgress(); } catch (error) { showToast(error.message); }
+}
+
+async function claimProgressItem(type, id) {
+  try { progressData = await accountRequest("/api/account/progress/claim", { method: "POST", body: JSON.stringify({ type, id }) }); updateCurrentAccount(progressData.account); renderProgress(); showToast("獎勵已收進織音錢包！"); } catch (error) { showToast(error.message); }
 }
 
 function openAccountUi() {
@@ -1214,7 +1253,10 @@ document.querySelector("#changePasswordButton").addEventListener("click", async 
   finally { button.disabled = false; }
 });
 document.querySelector("#logoutButton").addEventListener("click", () => { logout(); els.accountDialog.close(); showToast("已登出，仍可使用訪客模式遊玩"); });
-window.addEventListener("neighbor-account-change", (event) => syncAccountUi(event.detail));
+document.querySelector("#hubCheckinButton").addEventListener("click", claimCheckinReward);
+document.querySelector("#hubRewardsButton").addEventListener("click", () => { if (currentAccount()) document.querySelector("#progressDialog").showModal(); else openAccountUi(); });
+document.querySelector("#progressDialog").addEventListener("click", (event) => { const button = event.target.closest("[data-progress-type]"); if (button) claimProgressItem(button.dataset.progressType, button.dataset.progressId); });
+window.addEventListener("neighbor-account-change", (event) => { syncAccountUi(event.detail); if (currentAccount()) loadProgress(); else { progressData = null; renderProgress(); } });
 document.querySelector("#saveName").addEventListener("click", () => {
   const next = els.nameInput.value.trim();
   if (!next) { els.nameInput.focus(); return; }
@@ -1252,5 +1294,5 @@ document.addEventListener("visibilitychange", () => {
 updateIdentity();
 updateHostingStatus();
 showView("home");
-restoreSession().then(() => syncAccountUi());
+restoreSession().then(() => { syncAccountUi(); loadProgress(); });
 window.GOMOKU_ONLINE = { startGame: startOnlineGame };

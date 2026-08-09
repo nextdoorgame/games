@@ -11,7 +11,6 @@ const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseSecret = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const remoteAccountsEnabled = Boolean(supabaseUrl && supabaseSecret);
 const adminUsernameKey = normalizeUsername(process.env.ADMIN_USERNAME || "nextdoorboy");
-let remoteAccountsAvailable = remoteAccountsEnabled;
 const sessions = new Map();
 let database = { accounts: [] };
 let loaded = false;
@@ -154,7 +153,6 @@ async function load() {
       }
       remoteSeedRequired = true;
     } catch (error) {
-      remoteAccountsAvailable = false;
       console.error("Unable to read Supabase account data; using local fallback:", error.message);
     }
   }
@@ -168,7 +166,9 @@ async function load() {
 }
 
 async function persist() {
-  if (remoteAccountsAvailable) {
+  const now = Date.now();
+  database.accounts.forEach((account) => { account.updatedAt = now; });
+  if (remoteAccountsEnabled) {
     try {
       await supabaseRequest("game_accounts?on_conflict=id", {
         method: "POST",
@@ -177,7 +177,6 @@ async function persist() {
       });
       return;
     } catch (error) {
-      remoteAccountsAvailable = false;
       console.error("Unable to write Supabase account data; using local fallback:", error.message);
     }
   }
@@ -199,15 +198,6 @@ function validateCredentials(username, password, displayName = null) {
   if (displayName !== null && (displayName.length < 1 || displayName.length > 16)) throw new Error("玩家名稱需為 1–16 個字元");
 }
 
-async function claimDaily(account, source) {
-  const day = taipeiDay();
-  if (account.lastDailyBonusDay === day) return 0;
-  account.lastDailyBonusDay = day;
-  addLedger(account, DAILY_BONUS, "daily_activity", { source, day });
-  await persist();
-  return DAILY_BONUS;
-}
-
 export async function registerAccount({ username, password, displayName }) {
   await load();
   const normalized = normalizeUsername(username);
@@ -216,7 +206,8 @@ export async function registerAccount({ username, password, displayName }) {
   if (database.accounts.some((item) => item.usernameKey === normalized)) throw new Error("這個帳號已經有人使用");
   const account = {
     id: randomUUID(), username: String(username).trim(), usernameKey: normalized, displayName: name,
-    ...passwordRecord(password), balance: STARTING_BALANCE, lastDailyBonusDay: taipeiDay(), ledger: [], aiGames: {},
+    ...passwordRecord(password), balance: STARTING_BALANCE, lastDailyBonusDay: null, ledger: [], aiGames: {},
+    progression: { xp: 0, level: 1, streak: 0, lastCheckinDay: null, games: 0, wins: 0, gameTypes: [] }, dailyTasks: [], achievements: [],
     createdAt: Date.now(), updatedAt: Date.now()
   };
   database.accounts.push(account);
@@ -228,9 +219,9 @@ export async function loginAccount({ username, password }) {
   await load();
   const account = database.accounts.find((item) => item.usernameKey === normalizeUsername(username));
   if (!account || !verifyPassword(account, String(password || ""))) throw new Error("帳號或密碼不正確");
-  const bonus = await claimDaily(account, "login");
   account.updatedAt = Date.now();
-  return { token: issueSession(account.id), account: publicAccount(account, bonus) };
+  await persist();
+  return { token: issueSession(account.id), account: publicAccount(account) };
 }
 
 export async function accountFromRequest(req) {
@@ -248,8 +239,7 @@ export async function accountFromRequest(req) {
 export async function restoreAccount(req) {
   const account = await accountFromRequest(req);
   if (!account) throw new Error("登入已失效，請重新登入");
-  const bonus = await claimDaily(account, "login");
-  return publicAccount(account, bonus);
+  return publicAccount(account);
 }
 
 export async function changeAccountPassword(account, currentPassword, newPassword) {
@@ -261,14 +251,13 @@ export async function changeAccountPassword(account, currentPassword, newPasswor
 }
 
 export async function beginAiGame(account, gameType) {
-  const bonus = await claimDaily(account, "game");
   const gameId = randomUUID();
   account.aiGames ||= {};
   account.aiGames[gameId] = { gameType: String(gameType || "game").slice(0, 24), settled: false, createdAt: Date.now() };
   const entries = Object.entries(account.aiGames).sort((a, b) => b[1].createdAt - a[1].createdAt).slice(0, 50);
   account.aiGames = Object.fromEntries(entries);
   await persist();
-  return { gameId, account: publicAccount(account, bonus) };
+  return { gameId, account: publicAccount(account) };
 }
 
 export async function finishAiGame(account, gameId, result) {
@@ -285,8 +274,8 @@ export async function finishAiGame(account, gameId, result) {
   return { reward, account: publicAccount(account, reward) };
 }
 
-export async function playerProgress(account) { await load(); return { account: publicAccount(account), checkin: { day: taipeiDay(), streak: progression(account).streak || 0, claimed: progression(account).lastCheckinDay === taipeiDay() }, tasks: taskSet(account).tasks, achievements: achievementSet(account), nextLevelXp: levelNeed(progression(account).level) }; }
-export async function claimCheckin(account) { const p = progression(account), day = taipeiDay(); if (p.lastCheckinDay === day) throw new Error("今天已完成簽到"); const previous = new Date(`${p.lastCheckinDay || "1970-01-01"}T00:00:00+08:00`), today = new Date(`${day}T00:00:00+08:00`); p.streak = Math.round((today - previous) / 86400000) === 1 ? Math.min(7, p.streak + 1) : 1; p.lastCheckinDay = day; const reward = [1000,1200,1500,1800,2200,2800,4000][p.streak - 1]; addLedger(account,reward,"daily_checkin",{day,streak:p.streak}); addXp(account,50); await persist(); return { reward, account: publicAccount(account), progress: await playerProgress(account) }; }
+export async function playerProgress(account) { await load(); const p = progression(account); const daily = taskSet(account); return { account: publicAccount(account), checkin: { day: taipeiDay(), streak: p.streak || 0, claimed: p.lastCheckinDay === taipeiDay() }, tasks: daily.tasks, achievements: achievementSet(account), recentGames: [...(p.gameTypes || [])].slice(-4).reverse(), nextLevelXp: levelNeed(p.level) }; }
+export async function claimCheckin(account) { const p = progression(account), day = taipeiDay(); if (p.lastCheckinDay === day) throw new Error("今天已完成簽到"); const previous = new Date(`${p.lastCheckinDay || "1970-01-01"}T00:00:00+08:00`), today = new Date(`${day}T00:00:00+08:00`); p.streak = Math.round((today - previous) / 86400000) === 1 ? Math.min(7, p.streak + 1) : 1; p.lastCheckinDay = day; account.lastDailyBonusDay = day; const reward = [1000,1200,1500,1800,2200,2800,4000][p.streak - 1]; addLedger(account,reward,"daily_checkin",{day,streak:p.streak}); addXp(account,50); taskSet(account); await persist(); return { reward, account: publicAccount(account), progress: await playerProgress(account) }; }
 export async function claimProgressReward(account, type, id) { const list = type === "task" ? taskSet(account).tasks : achievementSet(account); const item = list.find((entry)=>entry.id===id); if (!item || item.claimed || (type === "task" && item.progress < item.target) || (type === "achievement" && !item.ready)) throw new Error("此獎勵目前無法領取"); if (type === "task") item.claimed=true; else account.achievements.push(item.id); addLedger(account,item.reward,`${type}_reward`,{id}); addXp(account,item.xp); await persist(); return playerProgress(account); }
 
 export function safeWager(value) {
@@ -344,11 +333,11 @@ export async function deleteAccountForAdmin(targetId, adminId) {
   if (index < 0) throw new Error("找不到帳號");
   if (database.accounts[index].id === adminId) throw new Error("不可刪除目前登入的管理員帳號");
   const target = database.accounts[index];
-  if (remoteAccountsAvailable) {
+  if (remoteAccountsEnabled) {
     await supabaseRequest(`game_accounts?id=eq.${encodeURIComponent(target.id)}`, { method: "DELETE", headers: { prefer: "return=minimal" } });
   }
   database.accounts.splice(index, 1);
-  if (!remoteAccountsAvailable) await persist();
+  if (!remoteAccountsEnabled) await persist();
   return adminAccount(target);
 }
 
