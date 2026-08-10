@@ -15,7 +15,7 @@ import { RHYTHM_SONGS, createRhythmState, drawRhythm, prepareRhythmAudio, update
 import { createPianoState, drawPiano, pianoTone, preparePianoAudio, updatePiano } from "./piano-game.js?v=neighbor-2";
 import { reconcileArcadeGuest } from "./arcade-sync.js?v=neighbor-2";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
-import { authHeaders, finishRewardGame, startRewardGame } from "./account.js?v=neighbor-1";
+import { authHeaders, finishRewardGame, restoreSession, startRewardGame } from "./account.js?v=neighbor-1";
 
 const GAMES = {
   gomoku: { name: "五子棋", players: [2], mode: "19×19 棋盤" },
@@ -128,6 +128,7 @@ let arcadeSocketRetry = 0;
 let arcadeSocketLastHostFrame = -1;
 let arcadeSocketLastInput = "";
 let arcadeSocketLastInputAt = 0;
+let wagerRefreshKey = "";
 const arcadeKeys = Object.create(null);
 const arcadeTouch = Object.create(null);
 const arcadeActionPulse = [0, 0];
@@ -186,6 +187,14 @@ async function roomRequest(path, options = {}) {
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function refreshWagerBalance(room) {
+  if (room?.wagerResult?.status !== "settled") return;
+  const key = `${room.id}:${room.wagerResult.winnerName}:${room.wagerResult.amount}`;
+  if (wagerRefreshKey === key) return;
+  wagerRefreshKey = key;
+  restoreSession().catch(() => {});
 }
 
 function stopRoomWaiting() {
@@ -604,6 +613,7 @@ async function syncTableRoom({ commit = false, initialize = false } = {}) {
     } else {
       state.room = data.room; state.humanSeats = data.room.players.length; state.roomRevision = data.revision; state.roomReady = Boolean(data.state);
     }
+    refreshWagerBalance(data.room);
     state.syncWarningShown = false;
   } catch (error) {
     if (!state?.syncWarningShown) { state.syncWarningShown = true; toast(`多人牌局同步暫停：${error.message}`); }
@@ -808,6 +818,7 @@ async function syncTetrisRoom() {
     const data = await roomRequest(`/api/rooms/${roomId}/tetris`, { method: "POST", body: JSON.stringify({ playerId: roomPlayerId, state: tetrisSnapshot(state.engine) }) });
     if (state?.game !== "tetris" || state.room?.id !== data.room.id) return;
     state.room = data.room;
+    refreshWagerBalance(data.room);
     state.opponent = data.snapshots.find((item) => item.playerId !== roomPlayerId)?.state || null;
     const recovered = state.syncWarningShown;
     state.syncFailures = 0;
@@ -896,9 +907,13 @@ function applyArcadeNetworkData(data) {
   const remote = data.inputs?.find((item) => item.playerId !== roomPlayerId);
   state.remoteInput = remote?.input || {};
   if (state.onlineRole === "guest" && data.snapshot) {
-    state.engine = state.hasAuthoritativeSnapshot ? reconcileArcadeGuest(state.engine, data.snapshot, state.game) : structuredClone(data.snapshot);
+    // Volleyball collisions are especially sensitive to a single-frame
+    // difference. The guest therefore renders the host's exact simulation
+    // instead of blending a second local physics result back into it.
+    state.engine = state.game === "volleyball" ? structuredClone(data.snapshot) : state.hasAuthoritativeSnapshot ? reconcileArcadeGuest(state.engine, data.snapshot, state.game) : structuredClone(data.snapshot);
     state.hasAuthoritativeSnapshot = true;
   }
+  refreshWagerBalance(data.room);
   const recovered = state.syncWarningShown;
   state.syncFailures = 0;
   state.syncWarningShown = false;
@@ -992,11 +1007,15 @@ function arcadeLoop() {
     const useAi = state.room ? state.room.players.length < 2 : state.players === 1;
     const firstInput = state.onlineRole === "guest" ? state.remoteInput : arcadeInput(0);
     const secondInput = state.onlineRole === "guest" ? arcadeInput(0) : state.room ? state.remoteInput : arcadeInput(1);
-    if (state.game === "volleyball") updateVolleyball(state.engine, firstInput, secondInput, useAi);
+    if (state.game === "volleyball") {
+      // The host owns volleyball physics. Once player two has a first snapshot,
+      // it only sends controls and renders those authoritative frames, avoiding
+      // the ghost ball and altered spike angles caused by dual simulation.
+      if (state.onlineRole !== "guest" || !state.hasAuthoritativeSnapshot) updateVolleyball(state.engine, firstInput, secondInput, useAi);
+    }
     else if (state.game === "racing") updateRacing(state.engine, firstInput, secondInput, useAi);
     else if (state.game === "pool") updatePool(state.engine, firstInput, secondInput, useAi);
     else if (state.game === "rhythm") updateRhythm(state.engine, firstInput, secondInput, useAi);
-    else if (state.game === "piano") updatePiano(state.engine, firstInput, secondInput, useAi);
     else if (state.game === "piano") updatePiano(state.engine, firstInput, secondInput, useAi);
     else updateBrickBreaker(state.engine, firstInput, secondInput, useAi && state.engine.mode !== "classic");
   }

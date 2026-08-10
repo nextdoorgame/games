@@ -159,17 +159,27 @@ function roomWagerReady(room) {
 }
 
 async function settleRoomWager(room, winnerSeat) {
-  if (!room?.wager || room.wagerSettled || !Number.isInteger(winnerSeat) || winnerSeat < 0 || winnerSeat > 1) return;
+  if (!room?.wager || room.wagerSettled || !Number.isInteger(winnerSeat) || winnerSeat < 0 || winnerSeat > 1) return false;
   const winner = room.players[winnerSeat];
   const loser = room.players[winnerSeat === 0 ? 1 : 0];
+  if (!winner?.accountId || !loser?.accountId) {
+    room.wagerResult = { status: "failed", message: "下注帳號資料不完整，請重新登入後再結算" };
+    room.updatedAt = Date.now();
+    return false;
+  }
   try {
     await settleWager(winner.accountId, loser.accountId, room.wager, { roomId: room.id, gameType: room.gameType });
     room.wagerResult = { status: "settled", winnerName: winner.name, amount: room.wager };
+    room.wagerSettled = true;
+    room.updatedAt = Date.now();
+    return true;
   } catch (error) {
     room.wagerResult = { status: "failed", message: error.message };
+    // Do not consume the settlement attempt when persistence is temporarily
+    // unavailable. A later room sync can safely retry the same outcome.
+    room.updatedAt = Date.now();
+    return false;
   }
-  room.wagerSettled = true;
-  room.updatedAt = Date.now();
 }
 
 async function settleDuelRoom(game) {

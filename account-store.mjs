@@ -338,9 +338,19 @@ export async function settleWager(winnerId, loserId, amount, metadata = {}) {
   const loser = database.accounts.find((item) => item.id === loserId);
   if (!wager || !winner || !loser) throw new Error("下注帳號資料不完整");
   if (loser.balance < wager) throw new Error("敗方織音幣餘額不足，無法結算");
+  const winnerBefore = { balance: winner.balance, ledger: [...(winner.ledger || [])] };
+  const loserBefore = { balance: loser.balance, ledger: [...(loser.ledger || [])] };
   addLedger(loser, -wager, "player_wager_loss", metadata);
   addLedger(winner, wager, "player_wager_win", metadata);
-  await persist();
+  try {
+    // In production a wager is only complete once it reaches Supabase. This
+    // prevents Render's temporary disk from reporting a transfer as successful.
+    await persist({ requireRemote: productionMode });
+  } catch (error) {
+    winner.balance = winnerBefore.balance; winner.ledger = winnerBefore.ledger;
+    loser.balance = loserBefore.balance; loser.ledger = loserBefore.ledger;
+    throw error;
+  }
   return { winner: publicAccount(winner), loser: publicAccount(loser) };
 }
 
