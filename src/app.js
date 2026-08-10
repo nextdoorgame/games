@@ -16,7 +16,7 @@ const ONLINE_GAME_META = {
   checkers: { name: "中國跳棋", players: [2, 3] }, mahjong: { name: "麻將", players: [2, 3, 4] }, bigtwo: { name: "大老二", players: [3, 4, 5] },
   banqi: { name: "暗棋", players: [2] }, chess: { name: "西洋棋", players: [2] }, go: { name: "圍棋", players: [2] },
   blackjack: { name: "二十一點", players: [3, 4, 5] }, pickred: { name: "撿紅點", players: [3, 4, 5] }, ninetynine: { name: "九九", players: [3, 4, 5] },
-  tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }, pool: { name: "撞球 8 號球", players: [2] }
+  tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }, pool: { name: "撞球 8 號球", players: [2] }, rhythm: { name: "隔壁節奏鼓", players: [2] }
 };
 const DUEL_INVITE_GAMES = new Set(["gomoku", "xiangqi"]);
 
