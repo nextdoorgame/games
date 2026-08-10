@@ -12,7 +12,7 @@ import { drawBrickBreaker, drawRacing, drawVolleyball } from "./arcade-render.js
 import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from "./brick-breaker.js?v=neighbor-3";
 import { createPoolState, drawPool, updatePool } from "./pool-game.js?v=neighbor-1";
 import { RHYTHM_SONGS, createRhythmState, drawRhythm, prepareRhythmAudio, updateRhythm } from "./rhythm-game.js?v=neighbor-2";
-import { createPianoState, drawPiano, preparePianoAudio, updatePiano } from "./piano-game.js?v=neighbor-1";
+import { createPianoState, drawPiano, pianoTone, preparePianoAudio, updatePiano } from "./piano-game.js?v=neighbor-2";
 import { reconcileArcadeGuest } from "./arcade-sync.js?v=neighbor-2";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
 import { authHeaders, finishRewardGame, startRewardGame } from "./account.js?v=neighbor-1";
@@ -425,7 +425,11 @@ function openCasualSetup(game) {
     banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。", brickbreaker: pendingRoom ? "選擇雙板合作或左右對戰，房內兩位玩家會即時同步操作。" : "單人可闖關、收集道具並挑戰 Boss；雙人可選合作或左右對戰。", pool: pendingRoom ? "與房內玩家即時輪流出桿，先清完自己的球再打 8 號球。" : "可單人挑戰 AI，或使用同一把鍵盤輪流出桿。", piano: pendingRoom ? "兩位玩家在各自裝置使用方向鍵，即時同步對奏。" : "可選擇單人與 AI 合奏，或使用同一把鍵盤雙人對奏。"
   };
   setupDescription.textContent = descriptions[game] || "選擇遊戲人數與 AI 難度。";
-  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(game);
+  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing", "brickbreaker", "pool", "rhythm"].includes(game);
+  if (game === "piano") {
+    const details = ["音符較慢・判定較寬", "標準速度・平衡節奏", "音符密集・判定較窄"];
+    difficultyFieldset.querySelectorAll("small").forEach((item, index) => { item.textContent = details[index]; });
+  }
   speedFieldset.hidden = game !== "tetris";
   arcadeModeFieldset.hidden = game !== "brickbreaker";
   const options = pendingRoom ? [pendingRoom.maxPlayers] : game === "tetris" ? [1] : ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(game) ? [1, 2] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : meta.players;
@@ -840,8 +844,8 @@ window.addEventListener("keydown", (event) => {
 
 const isArcadeGame = (game) => ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(game);
 function arcadeInput(player = 0) {
-  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, action: arcadeKeys.Space || arcadeTouch.action || Date.now() < arcadeActionPulse[0] };
-  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, action: arcadeKeys.KeyF || arcadeKeys.Enter || Date.now() < arcadeActionPulse[1] };
+  if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, key4: arcadeKeys.KeyZ, key5: arcadeKeys.KeyX, key6: arcadeKeys.KeyC, key7: arcadeKeys.KeyV, action: arcadeKeys.Space || arcadeTouch.action || Date.now() < arcadeActionPulse[0] };
+  return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, key4: arcadeKeys.KeyF, key5: arcadeKeys.KeyG, key6: arcadeKeys.KeyH, key7: arcadeKeys.KeyJ, action: arcadeKeys.KeyF || arcadeKeys.Enter || Date.now() < arcadeActionPulse[1] };
 }
 
 function arcadeCanvasDraw() {
@@ -1026,7 +1030,7 @@ async function syncArcadeRoom() {
 function startArcadeGame(game, players, room, arcadeMode = "classic") {
   if (game === "rhythm") prepareRhythmAudio();
   if (game === "piano") preparePianoAudio();
-  const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : game === "pool" ? createPoolState() : game === "rhythm" ? createRhythmState(0, players) : game === "piano" ? createPianoState(players) : createBrickBreakerState(arcadeMode);
+  const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : game === "pool" ? createPoolState() : game === "rhythm" ? createRhythmState(0, players) : game === "piano" ? createPianoState(players, state.difficulty) : createBrickBreakerState(arcadeMode);
   if (room && ["racing", "brickbreaker"].includes(game)) engine.countdown = 0;
   state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, hasAuthoritativeSnapshot: false, syncWarningShown: false, syncFailures: 0 };
   const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">發球／衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
@@ -1051,8 +1055,14 @@ function startArcadeGame(game, players, room, arcadeMode = "classic") {
 
 window.addEventListener("keydown", (event) => {
   if (!isArcadeGame(state?.game) || !document.querySelector("#casualView").classList.contains("active") || setup.open) return;
-  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS", "KeyF", "Enter"].includes(event.code)) {
+  if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Space", "KeyA", "KeyD", "KeyW", "KeyS", "KeyF", "KeyG", "KeyH", "KeyJ", "KeyZ", "KeyX", "KeyC", "KeyV", "Enter"].includes(event.code)) {
     event.preventDefault(); arcadeKeys[event.code] = true;
+    if (state.game === "piano") {
+      const p1 = ["ArrowLeft", "ArrowUp", "ArrowDown", "ArrowRight", "KeyZ", "KeyX", "KeyC", "KeyV"];
+      const p2 = ["KeyA", "KeyW", "KeyS", "KeyD", "KeyF", "KeyG", "KeyH", "KeyJ"];
+      const lane = p1.indexOf(event.code) >= 0 ? p1.indexOf(event.code) : p2.indexOf(event.code);
+      if (lane >= 0 && !event.repeat) pianoTone(lane);
+    }
     if (event.code === "Space") arcadeActionPulse[0] = Date.now() + 160;
     if (["KeyF", "Enter"].includes(event.code)) arcadeActionPulse[1] = Date.now() + 160;
     sendArcadeSocketFrame(true);
