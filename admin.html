@@ -12,7 +12,7 @@
     <main class="wrap">
       <section class="panel top"><div><h1>♪ 隔壁同樂室管理後台</h1><p>帳號與織音幣管理僅限管理員使用。</p></div><a href="./index.html"><button class="secondary">回到同樂室</button></a></section>
       <section class="panel" id="loginPanel"><h2>管理員登入</h2><div class="login"><input id="username" autocomplete="username" placeholder="帳號"><input id="password" type="password" autocomplete="current-password" placeholder="密碼"><button id="loginButton">登入後台</button></div><p id="loginMessage" class="error" role="alert"></p></section>
-      <section class="panel hidden" id="adminPanel"><div class="top"><div><h2 id="adminName">帳號管理</h2><p id="summary">讀取中…</p></div><button id="refreshButton" class="secondary">重新整理</button></div><p id="adminMessage" class="error" role="alert"></p><table><thead><tr><th>帳號 ID</th><th>帳號／玩家名稱</th><th>織音幣</th><th>最後更新</th><th>操作</th></tr></thead><tbody id="accountsBody"></tbody></table></section>
+      <section class="panel hidden" id="adminPanel"><div class="top"><div><h2 id="adminName">帳號管理</h2><p id="summary">讀取中…</p><p id="storageStatus"><small>資料庫狀態讀取中…</small></p></div><button id="refreshButton" class="secondary">重新整理</button></div><p id="adminMessage" class="error" role="alert"></p><table><thead><tr><th>帳號 ID</th><th>帳號／玩家名稱</th><th>織音幣</th><th>最後更新</th><th>操作</th></tr></thead><tbody id="accountsBody"></tbody></table></section>
     </main>
     <script src="./config.js"></script>
     <script type="module" src="./src/admin.js"></script>

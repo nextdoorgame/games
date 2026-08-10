@@ -10,11 +10,22 @@ const dataPath = process.env.ACCOUNT_DATA_PATH || join(process.cwd(), "data", "a
 const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseSecret = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "");
 const remoteAccountsEnabled = Boolean(supabaseUrl && supabaseSecret);
+const productionMode = process.env.NODE_ENV === "production";
 const adminUsernameKey = normalizeUsername(process.env.ADMIN_USERNAME || "nextdoorboy");
 const sessions = new Map();
 let database = { accounts: [] };
 let loaded = false;
 let remoteSeedRequired = false;
+let remoteLastFailure = null;
+let remoteLastWriteAt = null;
+
+class AccountStorageUnavailableError extends Error {
+  constructor() {
+    super("帳號資料庫暫時無法儲存，請稍後再試");
+    this.name = "AccountStorageUnavailableError";
+    this.statusCode = 503;
+  }
+}
 
 async function supabaseRequest(path, options = {}) {
   const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
@@ -153,6 +164,7 @@ async function load() {
       }
       remoteSeedRequired = true;
     } catch (error) {
+      remoteLastFailure = error;
       console.error("Unable to read Supabase account data; using local fallback:", error.message);
     }
   }
@@ -165,7 +177,7 @@ async function load() {
   if (remoteSeedRequired && database.accounts.length) await persist();
 }
 
-async function persist() {
+async function persist({ requireRemote = false } = {}) {
   const now = Date.now();
   database.accounts.forEach((account) => { account.updatedAt = now; });
   if (remoteAccountsEnabled) {
@@ -175,11 +187,19 @@ async function persist() {
         headers: { prefer: "resolution=merge-duplicates,return=minimal" },
         body: JSON.stringify(database.accounts.map(accountForRemote))
       });
+      remoteLastFailure = null;
+      remoteLastWriteAt = now;
       return;
     } catch (error) {
+      remoteLastFailure = error;
       console.error("Unable to write Supabase account data; using local fallback:", error.message);
+      if (requireRemote) throw new AccountStorageUnavailableError();
     }
   }
+  // The hosted service must never claim that a new account was registered when
+  // only Render's ephemeral fallback file was updated. Local development keeps
+  // the file store so the project remains runnable without Supabase.
+  if (requireRemote && productionMode) throw new AccountStorageUnavailableError();
   await mkdir(dirname(dataPath), { recursive: true });
   const tempPath = `${dataPath}.${randomBytes(6).toString("hex")}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(database, null, 2)}\n`, { mode: 0o600 });
@@ -211,8 +231,31 @@ export async function registerAccount({ username, password, displayName }) {
     createdAt: Date.now(), updatedAt: Date.now()
   };
   database.accounts.push(account);
-  await persist();
+  try {
+    await persist({ requireRemote: true });
+  } catch (error) {
+    database.accounts = database.accounts.filter((item) => item.id !== account.id);
+    throw error;
+  }
   return { token: issueSession(account.id), account: publicAccount(account) };
+}
+
+export function accountStorageStatus() {
+  return {
+    provider: remoteAccountsEnabled ? "supabase" : "local",
+    configured: remoteAccountsEnabled,
+    ready: remoteAccountsEnabled && !remoteLastFailure,
+    registrationsBlocked: productionMode && (!remoteAccountsEnabled || Boolean(remoteLastFailure)),
+    lastWriteAt: remoteLastWriteAt,
+    // Do not expose Supabase errors or connection details to the browser.
+    message: remoteLastFailure
+      ? "最近一次 Supabase 連線或寫入失敗，新的帳號不會以本機暫存方式建立。"
+      : remoteAccountsEnabled
+        ? "Supabase 帳號資料庫已連線。"
+        : productionMode
+          ? "尚未設定 Supabase 帳號資料庫。"
+          : "本機開發模式使用本機帳號資料。"
+  };
 }
 
 export async function loginAccount({ username, password }) {

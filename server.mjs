@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import WebSocket, { WebSocketServer } from "ws";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiLegalMoves, getXiangqiWinner, otherXiangqiColor } from "./src/xiangqi.js";
-import { accountFromRequest, accountLedger, adjustAccountBalance, beginAiGame, canAffordWager, changeAccountPassword, claimCheckin, claimProgressReward, deleteAccountForAdmin, finishAiGame, isAdministrator, listAccountsForAdmin, loginAccount, playerProgress, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
+import { accountFromRequest, accountLedger, accountStorageStatus, adjustAccountBalance, beginAiGame, canAffordWager, changeAccountPassword, claimCheckin, claimProgressReward, deleteAccountForAdmin, finishAiGame, isAdministrator, listAccountsForAdmin, loginAccount, playerProgress, registerAccount, restoreAccount, safeWager, settleWager } from "./account-store.mjs";
 
 const defaultRoot = process.cwd();
 const BOARD_SIZE = 19;
@@ -579,7 +579,7 @@ async function handleApi(req, res, url) {
     try {
       const body = await readJson(req);
       return sendJson(res, 201, await registerAccount(body));
-    } catch (error) { return sendJson(res, 400, { error: error.message }); }
+    } catch (error) { return sendJson(res, error.statusCode || 400, { error: error.message }); }
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/login") {
@@ -622,6 +622,12 @@ async function handleApi(req, res, url) {
     const account = await accountFromRequest(req);
     if (!isAdministrator(account)) return sendJson(res, 403, { error: "需要管理員權限" });
     return sendJson(res, 200, { accounts: await listAccountsForAdmin() });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/admin/storage") {
+    const account = await accountFromRequest(req);
+    if (!isAdministrator(account)) return sendJson(res, 403, { error: "需要管理員權限" });
+    return sendJson(res, 200, { storage: accountStorageStatus() });
   }
 
   const adminCoinMatch = url.pathname.match(/^\/api\/admin\/accounts\/([^/]+)\/coins$/);

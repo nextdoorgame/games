@@ -18,9 +18,14 @@ function showAdmin() {
 async function loadAccounts() {
   adminMessage.textContent = "";
   try {
-    const data = await accountRequest("/api/admin/accounts");
+    const [data, storageData] = await Promise.all([
+      accountRequest("/api/admin/accounts"),
+      accountRequest("/api/admin/storage")
+    ]);
     const accounts = data.accounts || [];
     $("#summary").textContent = `目前共 ${accounts.length} 個帳號`;
+    const storage = storageData.storage || {};
+    $("#storageStatus").innerHTML = `<small>${storage.ready ? "✓" : "!"} ${escapeHtml(storage.message || "無法取得資料庫狀態")}</small>`;
     $("#accountsBody").innerHTML = accounts.map((account) => `<tr><td><small>${escapeHtml(account.id)}</small></td><td><strong>${escapeHtml(account.displayName)}</strong><br><small>${escapeHtml(account.username)}</small></td><td class="balance">${formatCoins(account.balance)}</td><td><small>${new Date(account.updatedAt).toLocaleString("zh-TW")}</small></td><td><div class="actions"><button class="coin-button secondary" data-id="${escapeHtml(account.id)}" data-name="${escapeHtml(account.displayName)}">調整金幣</button><button class="delete-button danger" data-id="${escapeHtml(account.id)}" data-name="${escapeHtml(account.displayName)}">刪除</button></div></td></tr>`).join("") || "<tr><td colspan=\"5\">尚無帳號</td></tr>";
   } catch (error) { adminMessage.textContent = error.message; }
 }
