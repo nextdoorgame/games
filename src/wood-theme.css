@@ -152,6 +152,10 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 .expanded-games .game-card-actions .rules-button { color: #655c52; background: #fffdfa; border-color: #cdbb9d; }
 .expanded-games .game-card-actions .rules-button:hover { color: var(--red); background: #fbf5ed; border-color: var(--red); }
 .platform-note { margin-top: 28px; color: #766d62; font-size: 11px; }
+.piano-preview { position: relative; overflow: hidden; background: linear-gradient(120deg,#fffdfa,#f0e2ca); }
+.piano-preview::before { content:""; position:absolute; left:8%; right:8%; bottom:12%; height:31%; border:5px solid #9c754b; border-radius:6px; background: repeating-linear-gradient(90deg,#fffdf7 0 10%,#a27b4e 10.7% 11.5%); box-shadow: inset 0 10px #2d2925; }
+.piano-preview i { position:absolute; top:12%; width:14%; height:38%; border-radius:8px; background:#ec6f59; box-shadow:0 4px 7px #7f473844; animation:piano-fall 1.8s ease-in-out infinite; }
+.piano-preview i:nth-child(1){left:17%;}.piano-preview i:nth-child(2){left:35%;height:22%;background:#eaa05d;animation-delay:.35s}.piano-preview i:nth-child(3){left:55%;height:30%;background:#2f9d9b;animation-delay:.7s}.piano-preview i:nth-child(4){left:73%;height:19%;background:#58b5b2;animation-delay:1.05s}.piano-preview b{position:absolute;left:9%;right:9%;bottom:43%;height:3px;background:#c79d47;box-shadow:0 0 10px #f8d97b;}@keyframes piano-fall{50%{transform:translateY(42px)}}
 
 .primary-button { background: var(--green); border-color: var(--green); }
 .primary-button:hover { background: #365543; border-color: #365543; }
