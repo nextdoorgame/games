@@ -110,8 +110,10 @@ export function createBrickBreakerState(mode = "classic") {
 }
 
 function paddleBounds(game, world, playerIndex) {
-  if (game.mode === "coop") return playerIndex === 0 ? [world.offsetX + 35, world.offsetX + world.width / 2 - 20] : [world.offsetX + world.width / 2 + 20, world.offsetX + world.width - 35];
-  return [world.offsetX + 25, world.offsetX + world.width - 25];
+  // Bounds represent the actual playfield edge. updatePaddle subsequently
+  // accounts for half the paddle width, so the board can reach both walls.
+  if (game.mode === "coop") return playerIndex === 0 ? [world.offsetX, world.offsetX + world.width / 2] : [world.offsetX + world.width / 2, world.offsetX + world.width];
+  return [world.offsetX, world.offsetX + world.width];
 }
 
 function updatePaddle(game, world, playerIndex, input = {}) {

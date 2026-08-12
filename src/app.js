@@ -2,7 +2,7 @@ import { shouldApplyOnlineSnapshot } from "./game-sync.js?v=neighbor-2";
 import { deviceId, playerId } from "./player-identity.js?v=neighbor-8";
 import { chooseAiMove } from "./ai.js?v=platform-1";
 import { applyXiangqiMove, createInitialXiangqiBoard, getXiangqiMovesFrom, getXiangqiWinner, otherXiangqiColor, xiangqiPieceColor, xiangqiPieceLabel } from "./xiangqi.js?v=platform-1";
-import { accountRequest, authHeaders, changePassword, currentAccount, finishRewardGame, login, logout, register, restoreSession, startRewardGame, updateCurrentAccount } from "./account.js?v=neighbor-2";
+import { accountRequest, authHeaders, changePassword, currentAccount, finishRewardGame, login, logout, register, restoreSession, startRewardGame, updateCurrentAccount } from "./account.js?v=neighbor-3";
 
 const SIZE = 19;
 const BLACK = 1;
@@ -15,7 +15,7 @@ const ONLINE_GAME_META = {
   gomoku: { name: "五子棋", players: [2] }, xiangqi: { name: "中國象棋", players: [2] }, reversi: { name: "黑白棋", players: [2] },
   checkers: { name: "中國跳棋", players: [2, 3] }, mahjong: { name: "麻將", players: [2, 3, 4] }, bigtwo: { name: "大老二", players: [3, 4, 5] },
   banqi: { name: "暗棋", players: [2] }, chess: { name: "西洋棋", players: [2] }, go: { name: "圍棋", players: [2] },
-  blackjack: { name: "二十一點", players: [3, 4, 5] }, pickred: { name: "撿紅點", players: [3, 4, 5] }, ninetynine: { name: "九九", players: [3, 4, 5] },
+  blackjack: { name: "二十一點", players: [3, 4, 5] }, pickred: { name: "撿紅點", players: [3, 4, 5] }, ninetynine: { name: "九九", players: [3, 4, 5] }, guess: { name: "猜數字 1A2B", players: [2, 3, 4] },
   tetris: { name: "俄羅斯方塊", players: [2] }, volleyball: { name: "皮卡丘排球", players: [2] }, racing: { name: "賽車障礙", players: [2] }, brickbreaker: { name: "隔壁打磚塊", players: [2] }, pool: { name: "撞球 8 號球", players: [2] }, rhythm: { name: "隔壁節奏鼓", players: [2] }
 };
 const DUEL_INVITE_GAMES = new Set(["gomoku", "xiangqi"]);
@@ -189,7 +189,7 @@ function renderProgress() {
   const taskList = document.querySelector("#progressTasks"), achievementList = document.querySelector("#progressAchievements");
   taskList.innerHTML = tasks.map((item) => `<article><strong>${item.label}</strong><span>${item.progress}/${item.target}・+${formatCoins(item.reward)} ♪・${item.xp} XP</span><button data-progress-type="task" data-progress-id="${item.id}" ${item.claimed || item.progress < item.target ? "disabled" : ""}>${item.claimed ? "已領取" : "領取"}</button></article>`).join("") || "尚無任務";
   achievementList.innerHTML = achievements.map((item) => `<article><strong>${item.label}</strong><span>+${formatCoins(item.reward)} ♪・${item.xp} XP</span><button data-progress-type="achievement" data-progress-id="${item.id}" ${item.claimed || !item.ready ? "disabled" : ""}>${item.claimed ? "已領取" : item.ready ? "領取" : "進行中"}</button></article>`).join("") || "尚無成就";
-  const gameNames = { gomoku: "五子棋", xiangqi: "中國象棋", reversi: "黑白棋", checkers: "中國跳棋", mahjong: "麻將", bigtwo: "大老二", banqi: "暗棋", chess: "西洋棋", go: "圍棋", blackjack: "二十一點", pickred: "撿紅點", ninetynine: "九九", tetris: "俄羅斯方塊", volleyball: "皮卡丘排球", racing: "賽車障礙", brickbreaker: "隔壁打磚塊", pool: "撞球 8 號球" };
+  const gameNames = { gomoku: "五子棋", xiangqi: "中國象棋", reversi: "黑白棋", checkers: "中國跳棋", mahjong: "麻將", bigtwo: "大老二", banqi: "暗棋", chess: "西洋棋", go: "圍棋", blackjack: "二十一點", pickred: "撿紅點", ninetynine: "九九", guess: "猜數字 1A2B", tetris: "俄羅斯方塊", volleyball: "皮卡丘排球", racing: "賽車障礙", brickbreaker: "隔壁打磚塊", pool: "撞球 8 號球" };
   document.querySelector("#recentGames").textContent = progressData.recentGames?.length ? progressData.recentGames.map((game) => gameNames[game] || game).join("・") : "開始第一場遊戲，留下你的足跡";
   document.querySelector("#leaderboardSummary").textContent = `${account.displayName}・Lv. ${account.level || 1}・${formatCoins(account.balance)} ♪`;
 }
@@ -1233,7 +1233,7 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
   const password = String(data.get("password") || "").trim().slice(0, 32);
-  const wager = maxPlayers === 2 ? Math.min(5000, Math.max(0, Number(data.get("wager")) || 0)) : 0;
+  const wager = maxPlayers === 2 ? Math.min(100000, Math.max(0, Number(data.get("wager")) || 0)) : 0;
   sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password, wager);
 });
 document.querySelector("#editName").addEventListener("click", openAccountUi);

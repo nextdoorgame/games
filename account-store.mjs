@@ -5,7 +5,7 @@ import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypt
 const STARTING_BALANCE = 100_000;
 const DAILY_BONUS = 1_000;
 const AI_WIN_BONUS = 2_000;
-const MAX_WAGER = 5_000;
+const MAX_WAGER = 100_000;
 const dataPath = process.env.ACCOUNT_DATA_PATH || join(process.cwd(), "data", "accounts.json");
 const supabaseUrl = String(process.env.SUPABASE_URL || "").replace(/\/$/, "");
 const supabaseSecret = String(process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || "");
@@ -293,10 +293,13 @@ export async function changeAccountPassword(account, currentPassword, newPasswor
   return publicAccount(account);
 }
 
-export async function beginAiGame(account, gameType) {
+export async function beginAiGame(account, gameType, wagerAmount = 0) {
+  const wager = safeWager(wagerAmount);
+  if (wager > account.balance) throw new Error("織音幣餘額不足，無法開始這筆 AI 下注");
   const gameId = randomUUID();
   account.aiGames ||= {};
-  account.aiGames[gameId] = { gameType: String(gameType || "game").slice(0, 24), settled: false, createdAt: Date.now() };
+  account.aiGames[gameId] = { gameType: String(gameType || "game").slice(0, 24), wager, settled: false, createdAt: Date.now() };
+  if (wager) addLedger(account, -wager, "ai_wager_stake", { gameType: account.aiGames[gameId].gameType, gameId });
   const entries = Object.entries(account.aiGames).sort((a, b) => b[1].createdAt - a[1].createdAt).slice(0, 50);
   account.aiGames = Object.fromEntries(entries);
   await persist();
@@ -310,8 +313,11 @@ export async function finishAiGame(account, gameId, result) {
   game.settled = true;
   game.result = ["win", "loss", "draw"].includes(result) ? result : "loss";
   game.finishedAt = Date.now();
-  const reward = game.result === "win" ? AI_WIN_BONUS : 0;
-  if (reward) addLedger(account, reward, "ai_win", { gameType: game.gameType, gameId });
+  const wager = safeWager(game.wager);
+  // A five-times payout includes the returned stake, so a winning 1,000-coin
+  // wager receives 5,000 coins after the stake was placed at game start.
+  const reward = game.result === "win" ? AI_WIN_BONUS + wager * 5 : game.result === "draw" ? wager : 0;
+  if (reward) addLedger(account, reward, game.result === "win" && wager ? "ai_wager_win" : game.result === "draw" && wager ? "ai_wager_refund" : "ai_win", { gameType: game.gameType, gameId, wager });
   updateTasks(account, game.gameType, game.result === "win");
   await persist();
   return { reward, account: publicAccount(account, reward) };

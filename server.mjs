@@ -26,12 +26,12 @@ const invites = new Map();
 const games = new Map();
 const rooms = new Map();
 const arcadeSockets = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "tetris", "volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"]);
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess", "tetris", "volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"]);
 const DUEL_ROOM_TYPES = new Set(["gomoku", "xiangqi"]);
-const TABLE_ROOM_TYPES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine"]);
+const TABLE_ROOM_TYPES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess"]);
 const ROOM_PLAYER_LIMITS = {
   gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
-  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], tetris: [2], volleyball: [2], racing: [2], brickbreaker: [2], pool: [2], rhythm: [2], piano: [2]
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], guess: [2, 3, 4], tetris: [2], volleyball: [2], racing: [2], brickbreaker: [2], pool: [2], rhythm: [2], piano: [2]
 };
 
 const contentTypes = {
@@ -395,7 +395,8 @@ function broadcastArcade(roomId, payload) {
 }
 
 function safeArcadeInput(value) {
-  return { left: Boolean(value?.left), right: Boolean(value?.right), up: Boolean(value?.up), down: Boolean(value?.down), action: Boolean(value?.action) };
+  const aimAngle = Number(value?.aimAngle);
+  return { left: Boolean(value?.left), right: Boolean(value?.right), up: Boolean(value?.up), down: Boolean(value?.down), action: Boolean(value?.action), ...(Number.isFinite(aimAngle) && Math.abs(aimAngle) <= Math.PI * 2 ? { aimAngle } : {}) };
 }
 
 function safeArcadeSnapshot(value, gameType) {
@@ -665,7 +666,7 @@ async function handleApi(req, res, url) {
     const account = await accountFromRequest(req);
     if (!account) return sendJson(res, 401, { error: "請先登入後領取遊戲獎勵" });
     const body = await readJson(req);
-    return sendJson(res, 201, await beginAiGame(account, body.gameType));
+    return sendJson(res, 201, await beginAiGame(account, body.gameType, body.wager));
   }
 
   if (req.method === "POST" && url.pathname === "/api/account/game-result") {
@@ -819,7 +820,8 @@ async function handleApi(req, res, url) {
         if (!room.tableState) return sendJson(res, 409, { error: "等待房主建立牌局" });
         if (expectedRevision !== room.tableRevision) return sendJson(res, 409, { error: "牌局狀態已更新，正在重新同步" });
         const currentTurn = tableTurnSeat(room.tableState, room.gameType);
-        const actorAllowed = Number.isInteger(currentTurn) && currentTurn >= room.players.length ? seat === 0 : currentTurn === seat;
+        const mahjongClaim = room.gameType === "mahjong" && room.tableState?.pendingDiscard && snapshot.pendingDiscard === null && seat !== Number(room.tableState.pendingDiscard.player);
+        const actorAllowed = mahjongClaim || (Number.isInteger(currentTurn) && currentTurn >= room.players.length ? seat === 0 : currentTurn === seat);
         if (!actorAllowed) return sendJson(res, 403, { error: "目前不是你的回合" });
       }
       room.tableState = snapshot;

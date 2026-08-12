@@ -80,11 +80,11 @@ export function logout() {
   emit();
 }
 
-export async function startRewardGame(gameType) {
+export async function startRewardGame(gameType, wager = 0) {
   activeSoloGame = null;
   if (!account) return null;
   try {
-    const data = await request("/api/account/game-start", { method: "POST", body: JSON.stringify({ gameType }) });
+    const data = await request("/api/account/game-start", { method: "POST", body: JSON.stringify({ gameType, wager }) });
     account = data.account;
     activeSoloGame = { id: data.gameId, gameType, settled: false };
     emit({ bonus: account?.bonus || 0 });
