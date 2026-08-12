@@ -378,8 +378,12 @@
       <form method="dialog"><button class="modal-close" value="cancel" aria-label="關閉">×</button><span class="eyebrow">MY ACCOUNT</span><h2 id="accountDisplayName">我的帳號</h2><div class="account-wallet"><span class="zhiyin-coin"><i>♪</i></span><p><small>目前織音幣</small><strong id="accountBalance">0</strong><span id="accountDailyStatus">今日活動尚未完成</span></p></div><p class="account-id">帳號：<strong id="accountUsername"></strong></p><fieldset><legend>修改密碼</legend><label class="text-field"><span>目前密碼</span><input id="currentPassword" type="password" autocomplete="current-password"></label><label class="text-field"><span>新密碼</span><input id="newPassword" type="password" autocomplete="new-password" placeholder="至少 8 個字元"></label><p id="passwordError" class="form-error" role="alert"></p><button id="changePasswordButton" class="secondary-button full" type="button">更新密碼</button></fieldset><button id="logoutButton" class="text-danger-button" type="button">登出這個帳號</button></form>
     </dialog>
 
+    <dialog id="directMessageDialog" class="modal direct-message-modal">
+      <section class="direct-message-content"><button id="closeDirectMessage" class="modal-close" type="button" aria-label="關閉">×</button><span class="eyebrow">PRIVATE MESSAGE</span><h2>與 <span id="directMessagePeerName">玩家</span> 私訊</h2><p>訊息只會傳送給這位目前在線的玩家。</p><div id="directMessageMessages" class="chat-messages" aria-live="polite"></div><form id="directMessageForm" class="chat-form"><input id="directMessageInput" maxlength="200" autocomplete="off" placeholder="輸入訊息…"><button id="sendDirectMessage" type="submit">傳送</button></form></section>
+    </dialog>
+
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-20"></script>
+    <script type="module" src="./src/app.js?v=neighbor-21"></script>
     <script type="module" src="./src/casual-app.js?v=neighbor-23"></script>
   </body>
 </html>

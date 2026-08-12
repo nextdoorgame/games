@@ -19,6 +19,7 @@ const INVITE_TTL = 5 * 60_000;
 const TURN_TIME_OPTIONS = new Set([1, 3, 5, 10]);
 const MAX_CHAT_LENGTH = 200;
 const MAX_CHAT_MESSAGES = 100;
+const DIRECT_MESSAGE_TTL = 30 * 24 * 60 * 60_000;
 const MAX_ROOM_PASSWORD_LENGTH = 32;
 
 const players = new Map();
@@ -26,6 +27,7 @@ const invites = new Map();
 const games = new Map();
 const rooms = new Map();
 const arcadeSockets = new Map();
+const directMessages = new Map();
 const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess", "tetris", "volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"]);
 const DUEL_ROOM_TYPES = new Set(["gomoku", "xiangqi"]);
 const TABLE_ROOM_TYPES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess"]);
@@ -93,6 +95,24 @@ function cleanupLobby() {
   }
   const roomCutoff = Date.now() - 2 * 60 * 60_000;
   for (const [id, room] of rooms) if (room.updatedAt < roomCutoff) rooms.delete(id);
+  const messageCutoff = Date.now() - DIRECT_MESSAGE_TTL;
+  for (const [key, messages] of directMessages) {
+    const recent = messages.filter((message) => message.createdAt >= messageCutoff).slice(-MAX_CHAT_MESSAGES);
+    if (recent.length) directMessages.set(key, recent);
+    else directMessages.delete(key);
+  }
+}
+
+function directMessageKey(firstId, secondId) {
+  return [firstId, secondId].sort().join(":");
+}
+
+function unreadDirectMessageCounts(playerId) {
+  const counts = {};
+  for (const messages of directMessages.values()) for (const message of messages) {
+    if (message.toId === playerId && !message.readBy?.includes(playerId)) counts[message.fromId] = (counts[message.fromId] || 0) + 1;
+  }
+  return counts;
 }
 
 function publicRoom(room) {
@@ -895,8 +915,36 @@ async function handleApi(req, res, url) {
       outgoingInvites,
       activeGame: activeGame?.id || null,
       activeRoom: activeRoom ? publicRoom(activeRoom) : null,
+      unreadDirectMessages: unreadDirectMessageCounts(playerId),
       reconnectedRoom: Boolean(reconnectedRoom)
     });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/direct-messages") {
+    const playerId = String(url.searchParams.get("playerId") || "").trim();
+    const peerId = String(url.searchParams.get("peerId") || "").trim();
+    const player = players.get(playerId);
+    const peer = players.get(peerId);
+    if (!player || !peer || playerId === peerId) return sendJson(res, 404, { error: "這位玩家目前不在線上" });
+    const messages = directMessages.get(directMessageKey(playerId, peerId)) || [];
+    for (const message of messages) if (message.toId === playerId && !message.readBy.includes(playerId)) message.readBy.push(playerId);
+    return sendJson(res, 200, { peer: { id: peer.id, name: peer.name }, messages });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/direct-messages") {
+    const body = await readJson(req);
+    const fromId = String(body.fromId || "").trim();
+    const toId = String(body.toId || "").trim();
+    const from = players.get(fromId);
+    const to = players.get(toId);
+    const text = String(body.text || "").trim().slice(0, MAX_CHAT_LENGTH);
+    if (!from || !to || fromId === toId) return sendJson(res, 404, { error: "這位玩家目前不在線上" });
+    if (!text) return sendJson(res, 400, { error: "請輸入訊息" });
+    const key = directMessageKey(fromId, toId);
+    const messages = directMessages.get(key) || [];
+    messages.push({ id: randomUUID(), fromId, toId, name: from.name, text, createdAt: Date.now(), readBy: [fromId] });
+    directMessages.set(key, messages.slice(-MAX_CHAT_MESSAGES));
+    return sendJson(res, 201, { messages: directMessages.get(key) });
   }
 
   if (req.method === "POST" && url.pathname === "/api/invite") {

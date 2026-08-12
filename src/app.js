@@ -32,6 +32,13 @@ const els = {
   onlineCount: document.querySelector("#onlineCount"),
   playerList: document.querySelector("#playerList"),
   refreshLobby: document.querySelector("#refreshLobby"),
+  directMessageDialog: document.querySelector("#directMessageDialog"),
+  directMessagePeerName: document.querySelector("#directMessagePeerName"),
+  directMessageMessages: document.querySelector("#directMessageMessages"),
+  directMessageForm: document.querySelector("#directMessageForm"),
+  directMessageInput: document.querySelector("#directMessageInput"),
+  sendDirectMessage: document.querySelector("#sendDirectMessage"),
+  closeDirectMessage: document.querySelector("#closeDirectMessage"),
   toast: document.querySelector("#toast"),
   singleDialog: document.querySelector("#singleDialog"),
   inviteDialog: document.querySelector("#inviteDialog"),
@@ -128,6 +135,9 @@ let roundDialogKey = "";
 let onlineMatchClosedHandled = false;
 let renderedChatKey = "";
 let lastAutomaticMoveKey = "";
+let directMessagePeer = null;
+let directMessageTimer = null;
+let directMessageUnread = {};
 let pendingSingleGameType = "gomoku";
 let preferredOnlineGameType = "gomoku";
 let lastActiveRoomSignal = "";
@@ -786,6 +796,7 @@ async function fetchLobby() {
     if (data.reconnectedRoom) showToast("已重新連線，正在回到原本的房間與座位");
     els.onlineCount.textContent = String(Math.max(0, data.onlineCount - 1));
     els.lobbyCount.textContent = String(Math.max(0, data.onlineCount - 1));
+    directMessageUnread = data.unreadDirectMessages || {};
     renderPlayers(data.players);
     window.dispatchEvent(new CustomEvent("neighbor-online-players", { detail: data.players }));
     if (!data.activeRoom) {
@@ -839,14 +850,92 @@ function renderPlayers(players) {
     const copy = document.createElement("div");
     copy.innerHTML = `<strong></strong><small>● 在線・可邀請</small>`;
     copy.querySelector("strong").textContent = player.name;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = pendingInvites.has(player.id) ? "等待回覆" : "邀請對戰";
-    button.disabled = pendingInvites.has(player.id);
-    button.addEventListener("click", () => prepareOnlineInvite(player, button));
-    row.append(avatar, copy, button);
+    const actions = document.createElement("div");
+    actions.className = "player-actions";
+    const inviteButton = document.createElement("button");
+    inviteButton.type = "button";
+    inviteButton.textContent = pendingInvites.has(player.id) ? "等待回覆" : "邀請對戰";
+    inviteButton.disabled = pendingInvites.has(player.id);
+    inviteButton.addEventListener("click", () => prepareOnlineInvite(player, inviteButton));
+    const directButton = document.createElement("button");
+    directButton.type = "button";
+    directButton.className = "direct-message-button";
+    const unread = Number(directMessageUnread[player.id]) || 0;
+    if (unread) { directButton.classList.add("has-unread"); directButton.dataset.unread = String(unread); }
+    directButton.textContent = "私訊";
+    directButton.addEventListener("click", () => openDirectMessage(player));
+    actions.append(directButton, inviteButton);
+    row.append(avatar, copy, actions);
     return row;
   }));
+}
+
+function renderDirectMessages(messages = []) {
+  if (!messages.length) {
+    els.directMessageMessages.innerHTML = `<p class="chat-empty">還沒有訊息，先打聲招呼吧！</p>`;
+    return;
+  }
+  els.directMessageMessages.replaceChildren(...messages.map((message) => {
+    const item = document.createElement("article");
+    item.className = `chat-message${message.fromId === playerId ? " mine" : ""}`;
+    const meta = document.createElement("small");
+    const time = new Intl.DateTimeFormat("zh-TW", { hour: "2-digit", minute: "2-digit" }).format(new Date(message.createdAt));
+    meta.textContent = `${message.fromId === playerId ? "你" : message.name}・${time}`;
+    const copy = document.createElement("p");
+    copy.textContent = message.text;
+    item.append(meta, copy);
+    return item;
+  }));
+  els.directMessageMessages.scrollTop = els.directMessageMessages.scrollHeight;
+}
+
+async function fetchDirectMessages() {
+  if (!directMessagePeer || !els.directMessageDialog.open) return;
+  try {
+    const data = await api(`/api/direct-messages?playerId=${encodeURIComponent(playerId)}&peerId=${encodeURIComponent(directMessagePeer.id)}`);
+    renderDirectMessages(data.messages || []);
+    if (directMessageUnread[directMessagePeer.id]) {
+      directMessageUnread = { ...directMessageUnread, [directMessagePeer.id]: 0 };
+    }
+  } catch (error) {
+    closeDirectMessage();
+    showToast(error.message);
+  }
+}
+
+function openDirectMessage(player) {
+  directMessagePeer = player;
+  els.directMessagePeerName.textContent = player.name;
+  els.directMessageMessages.innerHTML = `<p class="chat-empty">正在開啟對話…</p>`;
+  els.directMessageDialog.showModal();
+  fetchDirectMessages();
+  window.clearInterval(directMessageTimer);
+  directMessageTimer = window.setInterval(fetchDirectMessages, 1800);
+}
+
+function closeDirectMessage() {
+  window.clearInterval(directMessageTimer);
+  directMessageTimer = null;
+  directMessagePeer = null;
+  if (els.directMessageDialog.open) els.directMessageDialog.close();
+}
+
+async function sendDirectMessage(event) {
+  event.preventDefault();
+  if (!directMessagePeer) return;
+  const text = els.directMessageInput.value.trim();
+  if (!text) return;
+  els.sendDirectMessage.disabled = true;
+  try {
+    const data = await api("/api/direct-messages", { method: "POST", body: JSON.stringify({ fromId: playerId, toId: directMessagePeer.id, text }) });
+    els.directMessageInput.value = "";
+    renderDirectMessages(data.messages || []);
+  } catch (error) {
+    showToast(error.message);
+  } finally {
+    els.sendDirectMessage.disabled = false;
+    els.directMessageInput.focus();
+  }
 }
 
 function prepareOnlineInvite(player, button) {
@@ -1278,6 +1367,9 @@ window.addEventListener("neighbor-room-left", (event) => {
   showView(event.detail?.destination || "home");
 });
 els.refreshLobby.addEventListener("click", fetchLobby);
+els.directMessageForm.addEventListener("submit", sendDirectMessage);
+els.closeDirectMessage.addEventListener("click", closeDirectMessage);
+els.directMessageDialog.addEventListener("close", () => { window.clearInterval(directMessageTimer); directMessageTimer = null; directMessagePeer = null; });
 els.board.addEventListener("click", handleBoardClick);
 els.chatForm.addEventListener("submit", sendChatMessage);
 els.undoMove.addEventListener("click", undoSingleMove);
@@ -1285,7 +1377,7 @@ els.restartGame.addEventListener("click", restartSingle);
 els.continueSeries.addEventListener("click", continueCurrentSeries);
 els.endSeries.addEventListener("click", endCurrentSeries);
 els.roundEndDialog.addEventListener("cancel", (event) => event.preventDefault());
-window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); window.clearInterval(onlineClockTimer); });
+window.addEventListener("beforeunload", () => { window.clearInterval(lobbyTimer); window.clearInterval(onlineTimer); window.clearInterval(onlineClockTimer); window.clearInterval(directMessageTimer); });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden || gameMode === "online") return;
   startLobbyPolling();

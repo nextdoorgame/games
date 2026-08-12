@@ -194,6 +194,7 @@ button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px s
 
 .modal { border: 1px solid #c8b494; background: #fff; box-shadow: 0 30px 90px rgba(55,40,25,.27); }
 .modal form { border-top: 7px solid #ead5ae; }
+.direct-message-content { border-top-color: #ead5ae; }
 .modal::backdrop { background: rgba(61,51,40,.52); backdrop-filter: blur(5px); }
 .choice-grid label > span { border-color: #d9cdbc; background: #fff; }
 .choice-grid input:checked + span { border-color: var(--green); box-shadow: inset 0 -3px var(--green); background: #f2f7f3; }
