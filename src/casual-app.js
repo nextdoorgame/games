@@ -13,6 +13,8 @@ import { BRICK_BREAKER_MODES, createBrickBreakerState, updateBrickBreaker } from
 import { createPoolState, drawPool, updatePool } from "./pool-game.js?v=neighbor-2";
 import { RHYTHM_SONGS, createRhythmState, drawRhythm, prepareRhythmAudio, updateRhythm } from "./rhythm-game.js?v=neighbor-2";
 import { createPianoState, drawPiano, pianoTone, preparePianoAudio, updatePiano } from "./piano-game.js?v=neighbor-2";
+import { createFighterState, drawFighter, updateFighter } from "./fighter-game.js?v=neighbor-1";
+import { createStairsState, drawStairs, updateStairs } from "./stairs-game.js?v=neighbor-1";
 import { chooseGuess, createGuessNumberState, submitGuess, validGuess } from "./guess-number.js?v=neighbor-1";
 import { reconcileArcadeGuest } from "./arcade-sync.js?v=neighbor-2";
 import { deviceId as roomDeviceId, playerId as roomPlayerId } from "./player-identity.js?v=neighbor-8";
@@ -38,6 +40,8 @@ const GAMES = {
   pool: { name: "撞球 8 號球", players: [2], mode: "單人 AI・雙人即時對戰" },
   rhythm: { name: "隔壁節奏鼓", players: [2], mode: "50 首公版古典曲庫・雙人合作" },
   piano: { name: "雙人鋼琴對奏", players: [2], mode: "落下琴鍵・單人 AI・雙人連線" },
+  fighter: { name: "隔壁小勇士", players: [2], mode: "原創橫向格鬥・合作清怪" },
+  stairs: { name: "小朋友下樓梯", players: [2], mode: "無盡階梯・單人雙人" },
   guess: { name: "猜數字 1A2B", players: [2, 3, 4], mode: "四位不重複數字・輪流猜碼" }
 };
 
@@ -61,6 +65,8 @@ const GAME_RULES = {
   pool: { summary: "8 號球撞球，可單人挑戰 AI 或與朋友即時輪流出桿。", steps: ["方向鍵調整球桿方向，按住空白鍵蓄力、放開出桿。", "先打進自己的全色／花色球，最後才可打 8 號球。", "白球落袋或提早打進 8 號球會換手或判負。"] },
   rhythm: { summary: "跟著公版古典旋律敲擊紅、藍鼓點；曲目以網站端本地合成演奏。", steps: ["P1 使用 ← 紅鼓、→ 藍鼓；本機 P2 使用 A 紅鼓、D 藍鼓。", "雙人房中每位玩家在自己的裝置都使用 ←／→。", "依準度得到良、可、連評價；連擊越高分數越高。", "50 首曲目皆為公版作品，錄音以本地合成聲音產生，不串流外部音檔。"] },
   piano: { summary: "跟著落下的琴鍵演奏旋律，單人可與 AI 合奏，雙人可即時對奏。", steps: ["P1 使用 ←、↑、↓、→ 對應四個琴鍵；本機 P2 使用 A、W、S、D。", "連線雙人時，兩位玩家各自在自己的裝置使用方向鍵演奏。", "音符通過金色判定線時按下對應按鍵；Perfect 可累積更多分數與連擊。", "曲目結束後以分數較高者獲勝，分數相同則為平手。"] },
+  fighter: { summary: "原創橫向清怪格鬥：單人面對小隊怪物，雙人面對更大群敵人。", steps: ["P1：方向鍵移動與跳躍，空白鍵攻擊，Z 施放旋風技能。", "本機 P2：W／A／S／D 移動，F 攻擊，G 施放技能。", "單人有 5 隻怪物；雙人或雙人房提高為 9 隻，清空即過關。", "兩位勇士都倒下即失敗，跳躍和技能可幫助脫離包圍。"] },
+  stairs: { summary: "在不停下降的階梯間自動跳躍，努力撐得更久。", steps: ["方向鍵左右移動；落在階梯上時會自動跳往下一層。", "跌出畫面會失去一條生命，三條生命用完後結算階數。", "單人由 AI 陪跑，雙人模式比較誰走得更深。"] },
   guess: { summary: "猜出系統隨機產生的四位不重複數字，最快答對者獲勝。", steps: ["每次輸入四位不重複數字，例如 1234。", "數字與位置都正確是 A；數字正確但位置不同是 B。", "可單人對電腦，或在 2～4 人房輪流猜同一組密碼。"] }
 };
 
@@ -436,22 +442,22 @@ function openCasualSetup(game) {
   pendingGame = game; const meta = GAMES[game]; setupTitle.textContent = `設定${meta.name}遊戲`;
   const descriptions = {
     reversi: "你執黑先手，依難度挑戰 AI。", checkers: "選擇 2 或 3 人桌，其餘座位由 AI 補齊。", mahjong: "選擇真人玩家數，未坐滿的四方座位由 AI 補位。", bigtwo: "選擇 3～5 人牌局，其餘對手由 AI 補位。",
-    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", guess: pendingRoom ? "房間成員輪流猜同一組四位不重複密碼。" : "可單人與 AI 比速度，或本機多人輪流猜碼。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。", brickbreaker: pendingRoom ? "選擇雙板合作或左右對戰，房內兩位玩家會即時同步操作。" : "單人可闖關、收集道具並挑戰 Boss；雙人可選合作或左右對戰。", pool: pendingRoom ? "與房內玩家即時輪流出桿，先清完自己的球再打 8 號球。" : "可單人挑戰 AI，或使用同一把鍵盤輪流出桿。", piano: pendingRoom ? "兩位玩家在各自裝置使用方向鍵，即時同步對奏。" : "可選擇單人與 AI 合奏，或使用同一把鍵盤雙人對奏。"
+    banqi: "翻開第一枚棋子決定陣營，與 AI 對戰。", chess: "你執白先行，與三級 AI 對弈。", go: "13 路棋盤，你執黑先行。", blackjack: "選擇 3～5 位玩家，其他座位由 AI 補齊。", pickred: "選擇 3～5 人桌，與 AI 湊十吃牌。", ninetynine: "選擇 3～5 人桌，總點數不能超過 99。", guess: pendingRoom ? "房間成員輪流猜同一組四位不重複密碼。" : "可單人與 AI 比速度，或本機多人輪流猜碼。", tetris: pendingRoom ? "雙人房會同步顯示雙方棋盤；每位玩家可選擇自己的掉落速度。" : "使用方向鍵移動與旋轉、空白鍵快速落下；可自由調整速度。", volleyball: pendingRoom ? "與房內玩家同步進行沙灘排球，先拿到 7 分獲勝。" : "可選擇單人挑戰 AI，或使用同一把鍵盤進行雙人對戰。", racing: pendingRoom ? "與房內玩家同步競速，避開障礙並保住車輛耐久。" : "可選擇單人挑戰 AI，或兩人共享賽道進行障礙競速。", brickbreaker: pendingRoom ? "選擇雙板合作或左右對戰，房內兩位玩家會即時同步操作。" : "單人可闖關、收集道具並挑戰 Boss；雙人可選合作或左右對戰。", pool: pendingRoom ? "與房內玩家即時輪流出桿，先清完自己的球再打 8 號球。" : "可單人挑戰 AI，或使用同一把鍵盤輪流出桿。", piano: pendingRoom ? "兩位玩家在各自裝置使用方向鍵，即時同步對奏。" : "可選擇單人與 AI 合奏，或使用同一把鍵盤雙人對奏。", fighter: pendingRoom ? "兩位玩家各自在自己的裝置使用方向鍵、空白鍵與 Z，合作清除更多怪物。" : "單人可與 AI 搭檔，本機雙人可共用鍵盤合作清怪。", stairs: pendingRoom ? "兩位玩家各自在自己的裝置用方向鍵閃避階梯。" : "單人挑戰或本機雙人一起走下無盡階梯。"
   };
   setupDescription.textContent = descriptions[game] || "選擇遊戲人數與 AI 難度。";
-  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing", "brickbreaker", "pool", "rhythm"].includes(game);
+  difficultyFieldset.hidden = game === "tetris" || ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "fighter", "stairs"].includes(game);
   if (game === "piano") {
     const details = ["音符較慢・判定較寬", "標準速度・平衡節奏", "音符密集・判定較窄"];
     difficultyFieldset.querySelectorAll("small").forEach((item, index) => { item.textContent = details[index]; });
   }
   speedFieldset.hidden = game !== "tetris";
   arcadeModeFieldset.hidden = game !== "brickbreaker";
-  const options = pendingRoom ? [pendingRoom.maxPlayers] : game === "tetris" ? [1] : ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(game) ? [1, 2] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : game === "guess" ? [1, ...meta.players] : meta.players;
+  const options = pendingRoom ? [pendingRoom.maxPlayers] : game === "tetris" ? [1] : ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game) ? [1, 2] : ["reversi", "banqi", "chess", "go"].includes(game) ? [1] : game === "guess" ? [1, ...meta.players] : meta.players;
   playerOptions.replaceChildren(...options.map((count, index) => {
     const label = document.createElement("label");
-    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["volleyball", "racing", "pool", "rhythm", "piano"].includes(game) ? (pendingRoom ? "2 人連線對戰" : count === 1 ? "單人＋AI" : "本機雙人") : game === "brickbreaker" ? (pendingRoom ? "2 人連線" : count === 1 ? "單人闖關" : "本機雙人") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
+    const title = game === "tetris" ? (pendingRoom ? "2 人連線對戰" : "1 人挑戰") : ["volleyball", "racing", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game) ? (pendingRoom ? "2 人連線對戰" : count === 1 ? "單人＋AI" : "本機雙人") : game === "brickbreaker" ? (pendingRoom ? "2 人連線" : count === 1 ? "單人闖關" : "本機雙人") : ["reversi", "banqi", "chess", "go"].includes(game) ? "1 人＋AI" : `${count} 人${game === "mahjong" ? "玩家" : "桌"}`;
     const humanCount = pendingRoom?.players?.length || (game === "mahjong" ? count : 1), aiCount = pendingRoom?.aiFill ? Math.max(0, count - humanCount) : 0;
-    const detail = pendingRoom ? `${humanCount} 位真人${aiCount ? ` ＋ ${aiCount} 位 AI` : ""}` : game === "tetris" ? "練習消行與速度控制" : ["volleyball", "racing", "pool", "rhythm", "piano"].includes(game) ? (count === 1 ? "AI 會自動演奏" : "玩家 2 使用 A／W／S／D") : game === "brickbreaker" ? (count === 1 ? "三條生命・道具・Boss" : "P1 方向鍵・P2 A／D") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
+    const detail = pendingRoom ? `${humanCount} 位真人${aiCount ? ` ＋ ${aiCount} 位 AI` : ""}` : game === "tetris" ? "練習消行與速度控制" : ["volleyball", "racing", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game) ? (count === 1 ? "AI 會自動同行" : "玩家 2 使用 A／W／S／D") : game === "brickbreaker" ? (count === 1 ? "三條生命・道具・Boss" : "P1 方向鍵・P2 A／D") : game === "mahjong" ? `${4 - count} 個 AI 座位` : game === "checkers" ? `${count - 1} 個 AI 座位` : ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game) ? `${count - 1} 個 AI 座位` : "單人挑戰 AI";
     label.innerHTML = `<input type="radio" name="casualPlayers" value="${count}" ${index === 0 ? "checked" : ""}><span><b>${title}</b><small>${detail}</small></span>`;
     return label;
   }));
@@ -462,7 +468,7 @@ function openCasualSetup(game) {
 function canAiWager(game, players) {
   if (pendingRoom) return false;
   if (["reversi", "banqi", "chess", "go", "guess"].includes(game)) return true;
-  if (["volleyball", "racing", "pool", "rhythm", "piano"].includes(game)) return players === 1;
+  if (["volleyball", "racing", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game)) return players === 1;
   if (game === "checkers") return players >= 2;
   if (game === "mahjong") return players < 4;
   return ["bigtwo", "blackjack", "pickred", "ninetynine"].includes(game);
@@ -561,7 +567,7 @@ function soloResult() {
   if (state.game === "go" && state.winner) return state.winner === 3 ? "draw" : state.winner === 1 ? "win" : "loss";
   if (["mahjong", "bigtwo", "pickred", "ninetynine", "guess"].includes(state.game) && state.winner !== null) return state.winner === 0 ? "win" : "loss";
   if (state.game === "blackjack" && state.phase === "finished") return state.results?.[0] === "win" ? "win" : state.results?.[0] === "push" ? "draw" : "loss";
-  if (["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(state.game) && state.engine?.winner !== null) return state.engine.winner === -1 ? "draw" : state.engine.winner === 0 ? "win" : "loss";
+  if (["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(state.game) && state.engine?.winner !== null) return state.engine.winner === -1 ? "draw" : state.engine.winner === 0 ? "win" : "loss";
   return null;
 }
 
@@ -572,10 +578,10 @@ function startGame(game, players, difficulty, speed = "normal", room = null, arc
   const localSeat = room ? Math.max(0, room.players.findIndex((player) => player.id === roomPlayerId)) : 0;
   state = { game, players, difficulty, speed, room, arcadeMode, localSeat, humanSeats: room?.players?.length || 1, roomRevision: 0, roomReady: !room };
   showOnly("casualView"); titleEl.textContent = GAMES[game].name; subtitleEl.textContent = room ? `${room.maxPlayers} 人房・${room.name}` : "隔壁家庭局"; leaveCasualButton.textContent = room ? "← 離開房間" : "← 返回遊戲首頁"; pass.hidden = true; primary.hidden = true;
-  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(room ? room.players.length : players, room ? room.maxPlayers : 4), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), guess: () => startGuess(room ? room.maxPlayers : players === 1 ? 2 : players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room), brickbreaker: () => startArcadeGame("brickbreaker", players, room, arcadeMode), pool: () => startArcadeGame("pool", players, room), rhythm: () => startArcadeGame("rhythm", players, room), piano: () => startArcadeGame("piano", players, room) })[game]?.();
+  ({ reversi: startReversi, checkers: () => startCheckers(players), mahjong: () => startMahjong(room ? room.players.length : players, room ? room.maxPlayers : 4), bigtwo: () => startBigTwo(players), banqi: startBanqi, chess: startChess, go: startGo, blackjack: () => startBlackjack(players), pickred: () => startPickRed(players), ninetynine: () => startNinetyNine(players), guess: () => startGuess(room ? room.maxPlayers : players === 1 ? 2 : players), tetris: () => startTetris(speed, room), volleyball: () => startArcadeGame("volleyball", players, room), racing: () => startArcadeGame("racing", players, room), brickbreaker: () => startArcadeGame("brickbreaker", players, room, arcadeMode), pool: () => startArcadeGame("pool", players, room), rhythm: () => startArcadeGame("rhythm", players, room), piano: () => startArcadeGame("piano", players, room), fighter: () => startArcadeGame("fighter", players, room), stairs: () => startArcadeGame("stairs", players, room) })[game]?.();
   if (!room) {
     startRewardGame(game, aiWager);
-    const hasAiOpponent = ["reversi", "checkers", "banqi", "chess", "go", "bigtwo", "blackjack", "pickred", "ninetynine", "guess"].includes(game) || game === "mahjong" && players < 4 || ["volleyball", "racing", "pool", "rhythm", "piano"].includes(game) && players === 1;
+    const hasAiOpponent = ["reversi", "checkers", "banqi", "chess", "go", "bigtwo", "blackjack", "pickred", "ninetynine", "guess"].includes(game) || game === "mahjong" && players < 4 || ["volleyball", "racing", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game) && players === 1;
     if (hasAiOpponent) rewardMonitorTimer = setInterval(() => { const result = soloResult(); if (result) { clearInterval(rewardMonitorTimer); rewardMonitorTimer = null; finishRewardGame(result); } }, 400);
   }
   if (room && ONLINE_TABLE_GAMES.has(game)) startTableRoomSync();
@@ -908,7 +914,7 @@ window.addEventListener("keydown", (event) => {
   if (event.key.toLowerCase() === "p" && state.startCountdownAt <= Date.now()) { event.preventDefault(); state.engine.paused = !state.engine.paused; renderTetris(); }
 });
 
-const isArcadeGame = (game) => ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(game);
+const isArcadeGame = (game) => ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(game);
 function arcadeInput(player = 0) {
   if (player === 0) return { left: arcadeKeys.ArrowLeft || arcadeTouch.left, right: arcadeKeys.ArrowRight || arcadeTouch.right, up: arcadeKeys.ArrowUp || arcadeTouch.up, down: arcadeKeys.ArrowDown || arcadeTouch.down, key4: arcadeKeys.KeyZ, key5: arcadeKeys.KeyX, key6: arcadeKeys.KeyC, key7: arcadeKeys.KeyV, action: arcadeKeys.Space || arcadeTouch.action || Date.now() < arcadeActionPulse[0], ...(state?.game === "pool" && Number.isFinite(arcadePointerAim) ? { aimAngle: arcadePointerAim } : {}) };
   return { left: arcadeKeys.KeyA, right: arcadeKeys.KeyD, up: arcadeKeys.KeyW, down: arcadeKeys.KeyS, key4: arcadeKeys.KeyF, key5: arcadeKeys.KeyG, key6: arcadeKeys.KeyH, key7: arcadeKeys.KeyJ, action: arcadeKeys.KeyF || arcadeKeys.Enter || Date.now() < arcadeActionPulse[1] };
@@ -922,6 +928,8 @@ function arcadeCanvasDraw() {
   else if (state.game === "pool") drawPool(canvas, state.engine);
   else if (state.game === "rhythm") drawRhythm(canvas, state.engine);
   else if (state.game === "piano") drawPiano(canvas, state.engine);
+  else if (state.game === "fighter") drawFighter(canvas, state.engine);
+  else if (state.game === "stairs") drawStairs(canvas, state.engine);
   else drawBrickBreaker(canvas, state.engine);
 }
 
@@ -945,15 +953,15 @@ function renderArcadeStatus() {
     else statusEl.textContent = state.engine.mode === "classic" ? `生命 ${state.engine.lives}・累積 Combo 並接住掉落道具。` : state.engine.mode === "coop" ? `共用 ${state.engine.lives} 條生命，左右兩板互相救球。` : "先清空自己的半場，或讓對手生命歸零。";
     return;
   }
-  const detail = state.game === "volleyball" ? [`${first.score} 分`, `${second.score} 分`] : state.game === "pool" ? [`${first.score} 球・${first.group || "未定"}`, `${second.score} 球・${second.group || "未定"}`] : ["rhythm", "piano"].includes(state.game) ? [`${first.score} 分・×${first.combo}`, `${second.score} 分・×${second.combo}`] : [`${first.score} 分・❤ ${first.lives}`, `${second.score} 分・❤ ${second.lives}`];
+  const detail = state.game === "volleyball" ? [`${first.score} 分`, `${second.score} 分`] : state.game === "pool" ? [`${first.score} 球・${first.group || "未定"}`, `${second.score} 球・${second.group || "未定"}`] : ["rhythm", "piano"].includes(state.game) ? [`${first.score} 分・×${first.combo}`, `${second.score} 分・×${second.combo}`] : state.game === "fighter" ? [`${first.score} 分・❤ ${first.hp}`, `${second.score} 分・❤ ${second.hp}`] : state.game === "stairs" ? [`${first.score} 階・❤ ${first.lives}`, `${second.score} 階・❤ ${second.lives}`] : [`${first.score} 分・❤ ${first.lives}`, `${second.score} 分・❤ ${second.lives}`];
   setPlayers([{ name: names[0], detail: detail[0], color: "#2e72d2" }, { name: names[1], detail: detail[1], color: "#d94b3c" }], -1);
-  const countingDown = ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(state.game) && state.engine.countdown > 0;
+  const countingDown = ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(state.game) && state.engine.countdown > 0;
   turnEl.textContent = state.engine.winner !== null ? "本局結束" : countingDown ? "準備開始" : state.arcadePaused ? "遊戲暫停" : state.room && !opponent ? "等待對手" : "比賽進行中";
   if (state.engine.winner !== null) statusEl.textContent = state.engine.winner === -1 ? "本局平手，重新開始再比一次！" : `${state.engine.winner === 0 ? names[0] : names[1]} 獲勝！`;
   else if (countingDown) statusEl.textContent = `倒數 ${Math.max(1, Math.ceil(state.engine.countdown / 60))} 秒後開始。`;
   else if (state.room && !opponent) statusEl.textContent = "等待第二位玩家加入；目前由 AI 陪你暖身。";
   else if (state.game === "volleyball" && state.engine.lastSpike && state.engine.frame - state.engine.lastSpike.frame < 42) statusEl.textContent = `玩家 ${state.engine.lastSpike.player + 1}：${state.engine.lastSpike.label}`;
-  else statusEl.textContent = state.game === "volleyball" ? "空中按空白鍵殺球；同時搭配方向鍵可控制平殺、斜上或斜下角度。" : state.game === "pool" ? `輪到 ${names[state.engine.turn]} 出桿；方向鍵瞄準，按住空白鍵蓄力後放開。` : state.game === "rhythm" ? "P1：← 紅、→ 藍；雙人本機 P2：A 紅、D 藍。" : state.game === "piano" ? "P1：← ↑ ↓ →；雙人本機 P2：A W S D。連線時兩人都用方向鍵。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
+  else statusEl.textContent = state.game === "volleyball" ? "空中按空白鍵殺球；同時搭配方向鍵可控制平殺、斜上或斜下角度。" : state.game === "pool" ? `輪到 ${names[state.engine.turn]} 出桿；方向鍵瞄準，按住空白鍵蓄力後放開。` : state.game === "rhythm" ? "P1：← 紅、→ 藍；雙人本機 P2：A 紅、D 藍。" : state.game === "piano" ? "P1：← ↑ ↓ →；雙人本機 P2：A W S D。連線時兩人都用方向鍵。" : state.game === "fighter" ? "P1：方向鍵＋空白鍵攻擊、Z 技能；P2：WASD＋F 攻擊、G 技能。清空所有怪物！" : state.game === "stairs" ? "使用方向鍵左右移動；踩上階梯會自動跳躍，別跌出畫面。" : "避開三角錐、油漬與路障，保留最多耐久跑到終點。";
 }
 
 function applyArcadeNetworkData(data) {
@@ -1072,6 +1080,8 @@ function arcadeLoop() {
     else if (state.game === "pool") updatePool(state.engine, firstInput, secondInput, useAi);
     else if (state.game === "rhythm") updateRhythm(state.engine, firstInput, secondInput, useAi);
     else if (state.game === "piano") updatePiano(state.engine, firstInput, secondInput, useAi);
+    else if (state.game === "fighter") updateFighter(state.engine, firstInput, secondInput, useAi);
+    else if (state.game === "stairs") updateStairs(state.engine, firstInput, secondInput, useAi);
     else updateBrickBreaker(state.engine, firstInput, secondInput, useAi && state.engine.mode !== "classic");
   }
   if (state.room) sendArcadeSocketFrame();
@@ -1104,8 +1114,8 @@ async function syncArcadeRoom() {
 function startArcadeGame(game, players, room, arcadeMode = "classic") {
   if (game === "rhythm") prepareRhythmAudio();
   if (game === "piano") preparePianoAudio();
-  const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : game === "pool" ? createPoolState() : game === "rhythm" ? createRhythmState(0, players) : game === "piano" ? createPianoState(players, state.difficulty) : createBrickBreakerState(arcadeMode);
-  if (room && ["racing", "brickbreaker"].includes(game)) engine.countdown = 0;
+  const engine = game === "volleyball" ? createVolleyballState() : game === "racing" ? createRacingState() : game === "pool" ? createPoolState() : game === "rhythm" ? createRhythmState(0, players) : game === "piano" ? createPianoState(players, state.difficulty) : game === "fighter" ? createFighterState(players) : game === "stairs" ? createStairsState(players) : createBrickBreakerState(arcadeMode);
+  if (room && ["racing", "brickbreaker", "fighter", "stairs"].includes(game)) engine.countdown = 0;
   state = { ...state, players, room, arcadeMode, engine, arcadePaused: false, remoteInput: {}, onlineRole: room?.players?.[0]?.id === roomPlayerId ? "host" : room ? "guest" : null, hasAuthoritativeSnapshot: false, syncWarningShown: false, syncFailures: 0 };
   const touchButtons = game === "brickbreaker" ? '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="action">發球／衝刺</button><button type="button" data-arcade="right" aria-label="向右">→</button>' : '<button type="button" data-arcade="left" aria-label="向左">←</button><button type="button" data-arcade="up" aria-label="跳躍或加速">↑</button><button type="button" data-arcade="down" aria-label="向下或斜下殺球">↓</button><button type="button" data-arcade="right" aria-label="向右">→</button><button type="button" data-arcade="action">殺球</button>';
   boardEl.innerHTML = `<div class="arcade-stage${game === "brickbreaker" ? " brickbreaker-stage" : ""}"><canvas id="arcadeCanvas" width="800" height="500" aria-label="街機遊戲畫面"></canvas><div class="arcade-touch-controls">${touchButtons}</div></div>`;
@@ -1129,7 +1139,7 @@ function startArcadeGame(game, players, room, arcadeMode = "classic") {
     canvas.addEventListener("pointerup", () => { arcadeTouch.action = false; sendArcadeSocketFrame(true); });
     canvas.addEventListener("pointerleave", () => { arcadeTouch.action = false; sendArcadeSocketFrame(true); });
   }
-  rulesEl.textContent = game === "piano" ? (room ? "兩位玩家各自在自己的裝置使用 ←、↑、↓、→ 演奏四個琴鍵，即時同步對奏。" : "P1：← ↑ ↓ →；P2：A W S D。音符通過金色判定線時按下對應琴鍵。") : game === "volleyball" ? (room ? "兩位玩家都在自己的裝置使用方向鍵移動、↑ 跳躍、空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋空白鍵可撲救。" : "玩家 1：方向鍵移動，空白鍵攻擊；玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。空中搭配方向可改變殺球角度。") : game === "racing" ? (room ? "兩位玩家都在自己的裝置使用方向鍵操作。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久。") : game === "pool" ? "移動滑鼠瞄準球桿；虛線會預判母球及首顆碰撞球的路線。按住滑鼠蓄力、放開出桿，也可使用鍵盤。" : game === "rhythm" ? (room ? "兩位玩家各自在自己的裝置使用 ← 紅鼓、→ 藍鼓，跟著同一條節奏軌同步演奏。" : "P1：← 紅鼓、→ 藍鼓；P2：A 紅鼓、D 藍鼓。曲目由本地合成演奏，沒有串流等待。") : engine.mode === "classic" ? "使用 ←／→ 移動板子；開局與掉球後按空白鍵發球，球運行時按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : room ? "兩位玩家都在自己的裝置使用 ←／→ 移動、空白鍵發球／衝刺；合作模式共用生命，對戰模式先清空自己半場。" : "P1 使用 ←／→ 移動、空白鍵發球／衝刺；P2 使用 A／D 移動、F 或 Enter 發球／衝刺。";
+  rulesEl.textContent = game === "fighter" ? (room ? "兩位玩家各自使用方向鍵、空白鍵攻擊、Z 技能；怪物數會依雙人模式提升。" : "P1：方向鍵、空白鍵、Z；P2：WASD、F、G。清光怪物即可勝利。") : game === "stairs" ? (room ? "兩位玩家各自在自己的裝置使用方向鍵左右移動，避開階梯空隙。" : "P1 使用方向鍵；P2 使用 A／D。踩上階梯會自動跳躍，三條生命用完結算。") : game === "piano" ? (room ? "兩位玩家各自在自己的裝置使用 ←、↑、↓、→ 演奏四個琴鍵，即時同步對奏。" : "P1：← ↑ ↓ →；P2：A W S D。音符通過金色判定線時按下對應琴鍵。") : game === "volleyball" ? (room ? "兩位玩家都在自己的裝置使用方向鍵移動、↑ 跳躍、空白鍵攻擊；空中搭配前、後、↑、↓ 可改變殺球角度，地面按方向＋空白鍵可撲救。" : "玩家 1：方向鍵移動，空白鍵攻擊；玩家 2：W／A／S／D 移動，F 或 Enter 攻擊。空中搭配方向可改變殺球角度。") : game === "racing" ? (room ? "兩位玩家都在自己的裝置使用方向鍵操作。碰撞障礙會失去一點耐久，耐久較多或分數較高者獲勝。" : "玩家 1 使用方向鍵；本機玩家 2 使用 W、A、S、D。碰撞障礙會失去一點耐久。") : game === "pool" ? "移動滑鼠瞄準球桿；虛線會預判母球及首顆碰撞球的路線。按住滑鼠蓄力、放開出桿，也可使用鍵盤。" : game === "rhythm" ? (room ? "兩位玩家各自在自己的裝置使用 ← 紅鼓、→ 藍鼓，跟著同一條節奏軌同步演奏。" : "P1：← 紅鼓、→ 藍鼓；P2：A 紅鼓、D 藍鼓。曲目由本地合成演奏，沒有串流等待。") : engine.mode === "classic" ? "使用 ←／→ 移動板子；開局與掉球後按空白鍵發球，球運行時按住空白鍵可加速追球。共有三條生命，接住道具、累積 Combo，並在每三關挑戰 Boss。" : room ? "兩位玩家都在自己的裝置使用 ←／→ 移動、空白鍵發球／衝刺；合作模式共用生命，對戰模式先清空自己半場。" : "P1 使用 ←／→ 移動、空白鍵發球／衝刺；P2 使用 A／D 移動、F 或 Enter 發球／衝刺。";
   primary.hidden = false; primary.textContent = "暫停遊戲"; pass.hidden = true;
   renderArcadeStatus(); arcadeCanvasDraw(); arcadeFrame = requestAnimationFrame(arcadeLoop);
   if (room && ROOM_API) {

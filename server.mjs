@@ -28,12 +28,12 @@ const games = new Map();
 const rooms = new Map();
 const arcadeSockets = new Map();
 const directMessages = new Map();
-const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess", "tetris", "volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"]);
+const ROOM_GAME_TYPES = new Set(["gomoku", "xiangqi", "reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess", "tetris", "volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"]);
 const DUEL_ROOM_TYPES = new Set(["gomoku", "xiangqi"]);
 const TABLE_ROOM_TYPES = new Set(["reversi", "checkers", "mahjong", "bigtwo", "banqi", "chess", "go", "blackjack", "pickred", "ninetynine", "guess"]);
 const ROOM_PLAYER_LIMITS = {
   gomoku: [2], xiangqi: [2], reversi: [2], checkers: [2, 3], mahjong: [1, 2, 3, 4], bigtwo: [3, 4, 5],
-  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], guess: [2, 3, 4], tetris: [2], volleyball: [2], racing: [2], brickbreaker: [2], pool: [2], rhythm: [2], piano: [2]
+  banqi: [2], chess: [2], go: [2], blackjack: [3, 4, 5], pickred: [3, 4, 5], ninetynine: [3, 4, 5], guess: [2, 3, 4], tetris: [2], volleyball: [2], racing: [2], brickbreaker: [2], pool: [2], rhythm: [2], piano: [2], fighter: [2], stairs: [2]
 };
 
 const contentTypes = {
@@ -162,8 +162,8 @@ function createRoomRecord({ gameType, name, maxPlayers, host, matchConfig = null
     id: randomUUID(), gameType, name, maxPlayers, aiFill: false,
     status: maxPlayers === 1 ? "full" : "waiting", players: [host],
     snapshots: gameType === "tetris" ? new Map() : null,
-    arcadeInputs: ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(gameType) ? new Map() : null,
-    arcadeActionUntil: ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(gameType) ? new Map() : null,
+    arcadeInputs: ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(gameType) ? new Map() : null,
+    arcadeActionUntil: ["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(gameType) ? new Map() : null,
     arcadeSnapshot: null, tableState: null, tableRevision: 0,
     matchConfig, wager: maxPlayers === 2 ? safeWager(wager) : 0, wagerSettled: false, wagerResult: null,
     ...passwordRecord, launchAt: null, launchConfig: null, gameId: null,
@@ -881,7 +881,7 @@ async function handleApi(req, res, url) {
   const arcadeRoomMatch = url.pathname.match(/^\/api\/rooms\/([^/]+)\/arcade$/);
   if (req.method === "POST" && arcadeRoomMatch) {
     const room = rooms.get(arcadeRoomMatch[1]);
-    if (!room || !["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(room.gameType)) return sendJson(res, 404, { error: "街機遊戲房間已關閉" });
+    if (!room || !["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(room.gameType)) return sendJson(res, 404, { error: "街機遊戲房間已關閉" });
     const body = await readJson(req);
     const playerId = String(body.playerId || "").trim();
     if (!room.players.some((player) => player.id === playerId)) return sendJson(res, 403, { error: "你不在這個房間中" });
@@ -1173,7 +1173,7 @@ export function startStaticServer({ preferredPort = 5173, host = "127.0.0.1", ro
     const roomId = String(url.searchParams.get("roomId") || "").trim();
     const playerId = String(url.searchParams.get("playerId") || "").trim();
     const room = rooms.get(roomId);
-    if (!room || !["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano"].includes(room.gameType) || !room.players.some((player) => player.id === playerId)) return socket.destroy();
+    if (!room || !["volleyball", "racing", "brickbreaker", "pool", "rhythm", "piano", "fighter", "stairs"].includes(room.gameType) || !room.players.some((player) => player.id === playerId)) return socket.destroy();
     arcadeWebSockets.handleUpgrade(request, socket, head, (webSocket) => {
       webSocket.roomId = roomId;
       webSocket.playerId = playerId;
