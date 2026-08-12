@@ -1233,7 +1233,8 @@ document.querySelector("#confirmOnlineInvite").addEventListener("click", () => {
   const inviterColor = data.get("inviterColor") === "white" ? "white" : "black";
   const turnTimeMinutes = [1, 3, 5, 10].includes(Number(data.get("turnTimeMinutes"))) ? Number(data.get("turnTimeMinutes")) : 3;
   const password = String(data.get("password") || "").trim().slice(0, 32);
-  const wager = maxPlayers === 2 ? Math.min(100000, Math.max(0, Number(data.get("wager")) || 0)) : 0;
+  const customWager = Number(data.get("wagerAmount")) || 0;
+  const wager = maxPlayers === 2 ? Math.min(100000, Math.max(0, customWager || Number(data.get("wager")) || 0)) : 0;
   sendInvite(pendingInvitePlayer, pendingInviteButton, gameType, maxPlayers, bestOf, inviterColor, turnTimeMinutes, password, wager);
 });
 document.querySelector("#editName").addEventListener("click", openAccountUi);

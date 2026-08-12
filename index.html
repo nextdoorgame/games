@@ -318,7 +318,7 @@
         <fieldset><legend>選擇遊戲</legend><label class="modal-select"><span>遊戲</span><select id="onlineInviteGameSelect" name="gameType"></select></label></fieldset>
         <fieldset id="onlineInvitePlayerFieldset"><legend>房間人數</legend><label class="modal-select"><span>座位</span><select id="onlineInvitePlayerCount" name="maxPlayers"></select></label></fieldset>
         <fieldset><legend>房間密碼</legend><label class="text-field compact"><span>選填，對方接受邀請時需輸入</span><input id="onlineInviteRoomPassword" name="password" type="password" maxlength="32" autocomplete="new-password" placeholder="不設定則任何受邀者皆可加入"></label></fieldset>
-        <fieldset id="onlineWagerField"><legend>織音幣下注</legend><div class="wager-options"><label><input type="radio" name="wager" value="0" checked><span>不下注</span></label><label><input type="radio" name="wager" value="500"><span>500</span></label><label><input type="radio" name="wager" value="1000"><span>1,000</span></label><label><input type="radio" name="wager" value="2000"><span>2,000</span></label><label><input type="radio" name="wager" value="5000"><span>5,000</span></label></div><p class="wager-help">雙方皆須登入；勝方獲得對方下注金額，平手不扣幣。</p></fieldset>
+        <fieldset id="onlineWagerField"><legend>織音幣下注</legend><div class="wager-options"><label><input type="radio" name="wager" value="0" checked><span>不下注</span></label><label><input type="radio" name="wager" value="500"><span>500</span></label><label><input type="radio" name="wager" value="1000"><span>1,000</span></label><label><input type="radio" name="wager" value="5000"><span>5,000</span></label><label><input type="radio" name="wager" value="100000"><span>100,000</span></label></div><label class="text-field compact"><span>自訂下注（0–100,000）</span><input name="wagerAmount" type="number" min="0" max="100000" step="100" value="0"></label><p class="wager-help">雙方皆須登入；勝方獲得對方下注金額，平手不扣幣。</p></fieldset>
         <fieldset id="onlineSeriesFieldset"><legend>系列賽制</legend><div class="choice-grid series-grid">
           <label><input type="radio" name="bestOf" value="3" checked><span><b>三戰兩勝</b><small>先拿 2 勝</small></span></label>
           <label><input type="radio" name="bestOf" value="5"><span><b>五戰三勝</b><small>先拿 3 勝</small></span></label>
@@ -379,7 +379,7 @@
     </dialog>
 
     <script src="./config.js"></script>
-    <script type="module" src="./src/app.js?v=neighbor-19"></script>
+    <script type="module" src="./src/app.js?v=neighbor-20"></script>
     <script type="module" src="./src/casual-app.js?v=neighbor-23"></script>
   </body>
 </html>
